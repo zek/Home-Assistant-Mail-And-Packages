@@ -119,6 +119,12 @@ AMAZON_SHIPMENT_TRACKING = [
     "verzending-volgen",
     "update-bestelling",
 ]
+AMAZON_SHIPMENT_SUBJECT = [
+    "Shipped:",
+]
+AMAZON_ORDERED_SUBJECT = [
+    "Ordered:",
+]
 AMAZON_EMAIL = ["order-update@", "update-bestelling@", "versandbestaetigung@"]
 AMAZON_PACKAGES = "amazon_packages"
 AMAZON_ORDER = "amazon_order"
@@ -198,6 +204,8 @@ AMAZON_LANGS = [
 AMAZON_OTP = "amazon_otp"
 AMAZON_OTP_REGEX = "(\n)(\\d{6})(\n)"
 AMAZON_OTP_SUBJECT = "A one-time password is required for your Amazon delivery"
+
+AMAZON_DELIEVERED_BY_OTHERS_SEARCH_TEXT = ["AMAZON"]
 
 # Sensor Data
 SENSOR_DATA = {
@@ -1328,6 +1336,7 @@ SENSOR_ICON = 2
 
 # For sensors with delivering and delivered statuses
 SHIPPERS = [
+    "amazon",
     "capost",
     "dhl",
     "fedex",
