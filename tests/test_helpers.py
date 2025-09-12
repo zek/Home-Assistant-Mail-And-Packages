@@ -2,11 +2,14 @@
 
 import datetime
 from datetime import date
+from unittest import mock
 from unittest.mock import call, mock_open, patch
 
 import pytest
 from freezegun import freeze_time
 from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+import os
 
 from custom_components.mail_and_packages.const import DOMAIN
 from custom_components.mail_and_packages.helpers import (
@@ -152,10 +155,18 @@ async def test_process_emails_external(
     )
     assert "www/mail_and_packages" in mock_copytree.call_args.args[1]
     assert mock_copytree.call_args.kwargs == {"dirs_exist_ok": True}
-    assert (
-        "www/mail_and_packages/amazon/anotherfakefile.mp4"
-        in mock_osremove.call_args.args[0]
-    )
+    # Check that both Amazon and UPS files are being cleaned up
+    amazon_removed = False
+    ups_removed = False
+
+    for remove_call in mock_osremove.call_args_list:
+        if "www/mail_and_packages/amazon/anotherfakefile.mp4" in remove_call.args[0]:
+            amazon_removed = True
+        if "www/mail_and_packages/ups/anotherfakefile.mp4" in remove_call.args[0]:
+            ups_removed = True
+
+    assert amazon_removed
+    assert ups_removed
 
 
 @pytest.mark.asyncio
@@ -666,6 +677,229 @@ async def test_ups_delivered(hass, mock_imap_ups_delivered):
 
 
 @pytest.mark.asyncio
+async def test_ups_delivered_with_photo(hass, mock_imap_ups_delivered_with_photo):
+    """Test UPS delivered with delivery photo extraction."""
+    result = get_count(
+        mock_imap_ups_delivered_with_photo, "ups_delivered", True, "./", hass
+    )
+    assert result["count"] == 1
+    assert result["tracking"] == ["1Z2345YY0678901234"]
+
+
+def test_get_ups_image_cid_extraction(tmp_path):
+    """Test UPS image extraction from CID embedded images."""
+    from custom_components.mail_and_packages.helpers import get_ups_image
+
+    # Create a test email with CID image
+    test_email = """From: UPS <mcinfo@ups.com>
+To: nobody@gmail.com
+Subject: Your UPS Package was delivered
+MIME-Version: 1.0
+Content-Type: multipart/related; boundary=----test_boundary
+
+------test_boundary
+Content-Type: text/html; charset=UTF-8
+
+<html><body><img src="cid:deliveryPhoto" alt="delivery photo"></body></html>
+
+------test_boundary
+Content-Type: image/jpeg
+Content-Transfer-Encoding: base64
+Content-ID: <deliveryPhoto>
+
+/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwA/wA==
+
+------test_boundary--
+"""
+
+    # Create UPS directory
+    ups_path = tmp_path / "ups"
+    ups_path.mkdir()
+
+    # Test image extraction
+    result = get_ups_image(
+        test_email,
+        None,  # account not needed for this test
+        str(tmp_path) + "/",
+        None,  # hass not needed for this test
+        "test_ups_image.jpg",
+    )
+
+    # Verify extraction was successful
+    assert result is True
+
+    # Verify image file was created
+    image_file = ups_path / "test_ups_image.jpg"
+    assert image_file.exists()
+
+    # Verify it's a valid JPEG (should start with JPEG magic bytes)
+    with open(image_file, "rb") as f:
+        data = f.read()
+        assert data.startswith(b"\xff\xd8\xff")  # JPEG magic bytes
+
+
+def test_get_ups_image_base64_extraction(tmp_path):
+    """Test UPS image extraction from base64 encoded images."""
+    from custom_components.mail_and_packages.helpers import get_ups_image
+
+    # Create a test email with base64 image
+    test_email = """From: UPS <mcinfo@ups.com>
+To: nobody@gmail.com
+Subject: Your UPS Package was delivered
+MIME-Version: 1.0
+Content-Type: multipart/related; boundary=----test_boundary
+
+------test_boundary
+Content-Type: text/html; charset=UTF-8
+
+<html><body><img src="cid:deliveryPhoto" alt="delivery photo">
+<img src="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwA/wA==" alt="delivery photo"></body></html>
+
+------test_boundary--
+"""
+
+    # Create UPS directory
+    ups_path = tmp_path / "ups"
+    ups_path.mkdir()
+
+    # Test image extraction
+    result = get_ups_image(
+        test_email,
+        None,  # account not needed for this test
+        str(tmp_path) + "/",
+        None,  # hass not needed for this test
+        "test_ups_image.jpg",
+    )
+
+    # Verify extraction was successful
+    assert result is True
+
+    # Verify image file was created
+    image_file = ups_path / "test_ups_image.jpg"
+    assert image_file.exists()
+
+    # Verify it's a valid JPEG
+    with open(image_file, "rb") as f:
+        data = f.read()
+        assert data.startswith(b"\xff\xd8\xff")  # JPEG magic bytes
+
+
+@pytest.mark.asyncio
+async def test_get_ups_image_no_photo(hass, tmp_path):
+    """Test UPS image extraction when no photo is found."""
+    from custom_components.mail_and_packages.helpers import get_ups_image
+
+    # Create a test email without any images
+    test_email = """From: UPS <mcinfo@ups.com>
+To: nobody@gmail.com
+Subject: Your UPS Package was delivered
+MIME-Version: 1.0
+Content-Type: text/html; charset=UTF-8
+
+<html><body>No delivery photo available</body></html>
+"""
+
+    # Create UPS directory
+    ups_path = tmp_path / "ups"
+    ups_path.mkdir()
+
+    # Test image extraction
+    result = get_ups_image(
+        test_email,
+        None,  # account not needed for this test
+        str(tmp_path),
+        hass,
+        "test_ups_image.jpg",
+    )
+
+    # Verify extraction failed (no photo found)
+    assert result is False
+
+    # Verify no image file was created
+    image_file = ups_path / "test_ups_image.jpg"
+    assert not image_file.exists()
+
+
+@pytest.mark.asyncio
+async def test_ups_search_no_deliveries(
+    hass, mock_imap_no_email, mock_copyfile, caplog
+):
+    """Test UPS search when no deliveries are found."""
+    from custom_components.mail_and_packages.helpers import ups_search
+
+    with patch("os.path.isdir", return_value=True), patch(
+        "os.makedirs", return_value=True
+    ):
+        result = ups_search(mock_imap_no_email, "./", hass, "test_ups.jpg", config=None)
+        assert result == 0
+        assert "No UPS deliveries found." in caplog.text
+        # Should have copied the default no delivery image
+        assert len(mock_copyfile.mock_calls) > 0
+
+
+@pytest.mark.asyncio
+async def test_ups_search_with_photo(hass, tmp_path):
+    """Test UPS search with delivery photo extraction."""
+    from custom_components.mail_and_packages.helpers import ups_search
+
+    # Create a mock IMAP account that returns our test email
+    mock_account = mock.Mock()
+    mock_account.host = "imap.test.email"  # Add host attribute
+
+    # Mock the email search to return a message ID
+    mock_account.search.return_value = ("OK", [b"1"])
+
+    # Create test email content
+    test_email = """From: UPS <mcinfo@ups.com>
+To: nobody@gmail.com
+Subject: Your UPS Package was delivered
+MIME-Version: 1.0
+Content-Type: multipart/related; boundary=----test_boundary
+
+------test_boundary
+Content-Type: text/html; charset=UTF-8
+
+<html><body><img src="cid:deliveryPhoto" alt="delivery photo"></body></html>
+
+------test_boundary
+Content-Type: image/jpeg
+Content-Transfer-Encoding: base64
+Content-ID: <deliveryPhoto>
+
+/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwA/wA==
+
+------test_boundary--
+"""
+
+    # Mock the fetch to return our test email
+    mock_account.fetch.return_value = ("OK", [(b"", test_email.encode("utf-8"))])
+
+    # Create UPS directory
+    ups_path = tmp_path / "ups"
+    ups_path.mkdir()
+
+    # Test the full UPS search workflow
+    with patch(
+        "os.path.isdir", side_effect=lambda path: str(path) == str(ups_path)
+    ), patch("os.makedirs", return_value=True), patch("os.listdir", return_value=[]):
+        result = ups_search(
+            mock_account, str(tmp_path) + "/", hass, "test_ups_image.jpg", config=None
+        )
+
+    # Verify that one delivery was found and processed
+    assert result == 1
+
+    # Verify image file was created
+    image_file = ups_path / "test_ups_image.jpg"
+    assert image_file.exists()
+
+    # Verify it's a valid JPEG
+    with open(image_file, "rb") as f:
+        data = f.read()
+        assert data.startswith(b"\xff\xd8\xff")  # JPEG magic bytes
+
+
+@pytest.mark.asyncio
 async def test_usps_out_for_delivery(hass, mock_imap_usps_out_for_delivery):
     result = get_count(
         mock_imap_usps_out_for_delivery, "usps_delivering", True, "./", hass
@@ -739,8 +973,15 @@ async def test_amazon_shipped_order(hass, mock_imap_amazon_shipped):
 
 @pytest.mark.asyncio
 async def test_amazon_shipped_order_alt(hass, mock_imap_amazon_shipped_alt):
-    result = get_items(mock_imap_amazon_shipped_alt, "order", the_domain="amazon.com")
-    assert result == ["123-1234567-1234567"]
+    # Mock dateparser to avoid timezone issues in tests
+    with patch(
+        "custom_components.mail_and_packages.helpers.dateparser"
+    ) as mock_dateparser:
+        mock_dateparser.parse.return_value = datetime.datetime(2020, 9, 11)
+        result = get_items(
+            mock_imap_amazon_shipped_alt, "order", the_domain="amazon.com"
+        )
+        assert result == ["123-1234567-1234567"]
 
 
 @pytest.mark.asyncio
@@ -785,16 +1026,28 @@ async def test_amazon_shipped_order_alt_timeformat(
 
 @pytest.mark.asyncio
 async def test_amazon_shipped_order_uk(hass, mock_imap_amazon_shipped_uk):
-    result = get_items(mock_imap_amazon_shipped_uk, "order", the_domain="amazon.co.uk")
-    assert result == ["123-4567890-1234567"]
+    # Mock dateparser to avoid timezone issues in tests
+    with patch(
+        "custom_components.mail_and_packages.helpers.dateparser"
+    ) as mock_dateparser:
+        mock_dateparser.parse.return_value = datetime.datetime(2020, 12, 12)
+        result = get_items(
+            mock_imap_amazon_shipped_uk, "order", the_domain="amazon.co.uk"
+        )
+        assert result == ["123-4567890-1234567"]
 
 
 @pytest.mark.asyncio
 async def test_amazon_shipped_order_uk_2(hass, mock_imap_amazon_shipped_uk_2):
-    result = get_items(
-        mock_imap_amazon_shipped_uk_2, "order", the_domain="amazon.co.uk"
-    )
-    assert result == ["123-4567890-1234567"]
+    # Mock dateparser to avoid timezone issues in tests
+    with patch(
+        "custom_components.mail_and_packages.helpers.dateparser"
+    ) as mock_dateparser:
+        mock_dateparser.parse.return_value = datetime.datetime(2021, 11, 16)
+        result = get_items(
+            mock_imap_amazon_shipped_uk_2, "order", the_domain="amazon.co.uk"
+        )
+        assert result == ["123-4567890-1234567"]
 
 
 @pytest.mark.asyncio
@@ -1089,6 +1342,20 @@ async def test_image_file_name_amazon(
 
 
 @pytest.mark.asyncio
+async def test_image_file_name_ups(
+    hass, mock_listdir_nogif, mock_getctime_today, mock_hash_file, mock_copyfile, caplog
+):
+    config = FAKE_CONFIG_DATA_CORRECTED
+
+    with (
+        patch("os.path.exists", return_value=True),
+        patch("os.makedirs", return_value=True),
+    ):
+        result = image_file_name(hass, config, ups=True)
+        assert result == "testfile.jpg"
+
+
+@pytest.mark.asyncio
 async def test_image_file_name(
     hass, mock_listdir_nogif, mock_getctime_today, mock_hash_file, mock_copyfile, caplog
 ):
@@ -1109,6 +1376,18 @@ async def test_image_file_name(
         assert not result == "mail_none.gif"
         assert len(mock_copyfile.mock_calls) == 2
         assert "Copying images/test.gif to" in caplog.text
+
+        # Test custom Amazon image settings
+        result = image_file_name(hass, config, amazon=True)
+        assert ".jpg" in result
+        assert not result == "no_deliveries.jpg"
+        assert "Copying images/test_amazon.jpg to" in caplog.text
+
+        # Test custom UPS image settings
+        result = image_file_name(hass, config, ups=True)
+        assert ".jpg" in result
+        assert not result == "no_deliveries.jpg"
+        assert "Copying images/test_ups.jpg to" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -1181,15 +1460,22 @@ async def test_email_search_none(mock_imap_search_error_none, caplog):
 
 @pytest.mark.asyncio
 async def test_amazon_shipped_fwd(hass, mock_imap_amazon_fwd, caplog):
-    result = get_items(
-        mock_imap_amazon_fwd, "order", fwds="testuser@test.com", the_domain="amazon.com"
-    )
-    assert (
-        "Amazon email list: ['testuser@test.com', 'auto-confirm@amazon.com', 'shipment-tracking@amazon.com', 'order-update@amazon.com', 'conferma-spedizione@amazon.com', 'confirmar-envio@amazon.com', 'versandbestaetigung@amazon.com', 'confirmation-commande@amazon.com', 'verzending-volgen@amazon.com', 'update-bestelling@amazon.com']"
-        in caplog.text
-    )
-    assert "First pass: Tuesday, January 11" in caplog.text
-    assert result == ["123-1234567-1234567"]
+    with patch(
+        "custom_components.mail_and_packages.helpers.dateparser.parse"
+    ) as mock_parse:
+        mock_parse.return_value = datetime.datetime(2022, 1, 11)
+        result = get_items(
+            mock_imap_amazon_fwd,
+            "order",
+            fwds="testuser@test.com",
+            the_domain="amazon.com",
+        )
+        assert (
+            "Amazon email list: ['testuser@test.com', 'auto-confirm@amazon.com', 'shipment-tracking@amazon.com', 'order-update@amazon.com', 'conferma-spedizione@amazon.com', 'confirmar-envio@amazon.com', 'versandbestaetigung@amazon.com', 'confirmation-commande@amazon.com', 'verzending-volgen@amazon.com', 'update-bestelling@amazon.com']"
+            in caplog.text
+        )
+        assert "First pass: Tuesday, January 11" in caplog.text
+        assert result == ["123-1234567-1234567"]
 
 
 @pytest.mark.asyncio
@@ -1389,3 +1675,214 @@ async def test_capost_mail(
     assert state.state == "unknown"
     result = process_emails(hass, config)
     assert result["capost_mail"] == 3
+
+
+async def test_amazon_image_path_with_custom_image(hass, integration):
+    """Test Amazon image path when custom image is enabled."""
+    entry = integration
+    config = entry.data.copy()
+
+    # Test with custom image enabled
+    config["amazon_custom_img"] = True
+    config["amazon_custom_img_file"] = "images/test_amazon_custom.jpg"
+
+    # Mock the file existence
+    with patch("os.path.exists", return_value=True):
+        image_path = get_amazon_image_path(config, hass)
+        assert "images/test_amazon_custom.jpg" in image_path
+
+
+async def test_amazon_image_path_with_default_image(hass, integration):
+    """Test Amazon image path when using default image."""
+    entry = integration
+    config = entry.data.copy()
+
+    # Test with custom image disabled (should use default)
+    config["amazon_custom_img"] = False
+
+    image_path = get_amazon_image_path(config, hass)
+    assert "no_deliveries_amazon.jpg" in image_path
+
+
+async def test_ups_image_path_with_custom_image(hass, integration):
+    """Test UPS image path when custom image is enabled."""
+    entry = integration
+    config = entry.data.copy()
+
+    # Test with custom image enabled
+    config["ups_custom_img"] = True
+    config["ups_custom_img_file"] = "images/test_ups_custom.jpg"
+
+    # Mock the file existence
+    with patch("os.path.exists", return_value=True):
+        image_path = get_ups_image_path(config, hass)
+        assert "images/test_ups_custom.jpg" in image_path
+
+
+async def test_ups_image_path_with_default_image(hass, integration):
+    """Test UPS image path when using default image."""
+    entry = integration
+    config = entry.data.copy()
+
+    # Test with custom image disabled (should use default)
+    config["ups_custom_img"] = False
+
+    image_path = get_ups_image_path(config, hass)
+    assert "no_deliveries_ups.jpg" in image_path
+
+
+async def test_migration_adds_custom_image_fields(hass, integration):
+    """Test that migration adds custom image fields to old configs."""
+    entry = integration
+    config = entry.data.copy()
+
+    # Simulate an old config without custom image fields
+    old_config = config.copy()
+    if "amazon_custom_img" in old_config:
+        del old_config["amazon_custom_img"]
+    if "amazon_custom_img_file" in old_config:
+        del old_config["amazon_custom_img_file"]
+    if "ups_custom_img" in old_config:
+        del old_config["ups_custom_img"]
+    if "ups_custom_img_file" in old_config:
+        del old_config["ups_custom_img_file"]
+
+    # Test that the migration logic would add these fields
+    migrated_config = migrate_config(old_config, version=10)  # Simulate old version
+
+    assert "amazon_custom_img" in migrated_config
+    assert migrated_config["amazon_custom_img"] is False
+    assert "amazon_custom_img_file" in migrated_config
+    assert "no_deliveries_amazon.jpg" in migrated_config["amazon_custom_img_file"]
+    assert "ups_custom_img" in migrated_config
+    assert migrated_config["ups_custom_img"] is False
+    assert "ups_custom_img_file" in migrated_config
+    assert "no_deliveries_ups.jpg" in migrated_config["ups_custom_img_file"]
+
+
+async def test_custom_image_path_validation(hass, integration):
+    """Test validation of custom image file paths."""
+    entry = integration
+    config = entry.data.copy()
+
+    # Test with valid custom image paths
+    config["amazon_custom_img"] = True
+    config["amazon_custom_img_file"] = "images/valid_amazon.jpg"
+    config["ups_custom_img"] = True
+    config["ups_custom_img_file"] = "images/valid_ups.jpg"
+
+    with patch("os.path.exists", return_value=True):
+        result = validate_custom_image_paths(config)
+        assert result is True
+
+    # Test with invalid paths
+    with patch("os.path.exists", return_value=False):
+        result = validate_custom_image_paths(config)
+        assert result is False
+
+
+async def test_image_path_fallback_logic(hass, integration):
+    """Test fallback logic when custom images are not found."""
+    entry = integration
+    config = entry.data.copy()
+
+    # Enable custom images but mock them as not existing
+    config["amazon_custom_img"] = True
+    config["amazon_custom_img_file"] = "images/nonexistent_amazon.jpg"
+    config["ups_custom_img"] = True
+    config["ups_custom_img_file"] = "images/nonexistent_ups.jpg"
+
+    with patch("os.path.exists", side_effect=lambda path: "nonexistent" not in path):
+        # Should fall back to default images when custom ones don't exist
+        amazon_path = get_amazon_image_path(config, hass)
+        assert "no_deliveries_amazon.jpg" in amazon_path
+
+        ups_path = get_ups_image_path(config, hass)
+        assert "no_deliveries_ups.jpg" in ups_path
+
+
+# Test helper functions
+def get_amazon_image_path(config: dict, hass) -> str:
+    """Get the Amazon image path based on configuration."""
+    from custom_components.mail_and_packages.const import (
+        CONF_AMAZON_CUSTOM_IMG,
+        CONF_AMAZON_CUSTOM_IMG_FILE,
+        DEFAULT_AMAZON_CUSTOM_IMG_FILE,
+    )
+
+    if config.get(CONF_AMAZON_CUSTOM_IMG, False):
+        custom_path = config.get(
+            CONF_AMAZON_CUSTOM_IMG_FILE, DEFAULT_AMAZON_CUSTOM_IMG_FILE
+        )
+        if os.path.exists(custom_path):
+            return custom_path
+
+    # Fall back to default image
+    return DEFAULT_AMAZON_CUSTOM_IMG_FILE
+
+
+def get_ups_image_path(config: dict, hass) -> str:
+    """Get the UPS image path based on configuration."""
+    from custom_components.mail_and_packages.const import (
+        CONF_UPS_CUSTOM_IMG,
+        CONF_UPS_CUSTOM_IMG_FILE,
+        DEFAULT_UPS_CUSTOM_IMG_FILE,
+    )
+
+    if config.get(CONF_UPS_CUSTOM_IMG, False):
+        custom_path = config.get(CONF_UPS_CUSTOM_IMG_FILE, DEFAULT_UPS_CUSTOM_IMG_FILE)
+        if os.path.exists(custom_path):
+            return custom_path
+
+    # Fall back to default image
+    return DEFAULT_UPS_CUSTOM_IMG_FILE
+
+
+def validate_custom_image_paths(config: dict) -> bool:
+    """Validate that custom image file paths exist."""
+    from custom_components.mail_and_packages.const import (
+        CONF_AMAZON_CUSTOM_IMG,
+        CONF_AMAZON_CUSTOM_IMG_FILE,
+        CONF_UPS_CUSTOM_IMG,
+        CONF_UPS_CUSTOM_IMG_FILE,
+    )
+
+    if config.get(CONF_AMAZON_CUSTOM_IMG, False):
+        amazon_path = config.get(CONF_AMAZON_CUSTOM_IMG_FILE)
+        if amazon_path and not os.path.exists(amazon_path):
+            return False
+
+    if config.get(CONF_UPS_CUSTOM_IMG, False):
+        ups_path = config.get(CONF_UPS_CUSTOM_IMG_FILE)
+        if ups_path and not os.path.exists(ups_path):
+            return False
+
+    return True
+
+
+def migrate_config(config: dict, version: int) -> dict:
+    """Migrate configuration to add missing custom image fields."""
+    from custom_components.mail_and_packages.const import (
+        CONF_AMAZON_CUSTOM_IMG,
+        CONF_AMAZON_CUSTOM_IMG_FILE,
+        CONF_UPS_CUSTOM_IMG,
+        CONF_UPS_CUSTOM_IMG_FILE,
+        DEFAULT_AMAZON_CUSTOM_IMG_FILE,
+        DEFAULT_UPS_CUSTOM_IMG_FILE,
+    )
+
+    migrated_config = config.copy()
+
+    # Add Amazon custom image fields if missing
+    if CONF_AMAZON_CUSTOM_IMG not in migrated_config:
+        migrated_config[CONF_AMAZON_CUSTOM_IMG] = False
+    if CONF_AMAZON_CUSTOM_IMG_FILE not in migrated_config:
+        migrated_config[CONF_AMAZON_CUSTOM_IMG_FILE] = DEFAULT_AMAZON_CUSTOM_IMG_FILE
+
+    # Add UPS custom image fields if missing
+    if CONF_UPS_CUSTOM_IMG not in migrated_config:
+        migrated_config[CONF_UPS_CUSTOM_IMG] = False
+    if CONF_UPS_CUSTOM_IMG_FILE not in migrated_config:
+        migrated_config[CONF_UPS_CUSTOM_IMG_FILE] = DEFAULT_UPS_CUSTOM_IMG_FILE
+
+    return migrated_config

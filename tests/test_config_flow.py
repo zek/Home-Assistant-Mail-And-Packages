@@ -12,11 +12,13 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.mail_and_packages.config_flow import _validate_user_input
 from custom_components.mail_and_packages.const import (
     CONF_AMAZON_FWDS,
-    CONF_GENERATE_MP4,
-    CONF_IMAP_TIMEOUT,
-    CONF_SCAN_INTERVAL,
     CONF_STORAGE,
     DOMAIN,
+    CONF_AMAZON_CUSTOM_IMG,
+    CONF_AMAZON_CUSTOM_IMG_FILE,
+    CONF_UPS_CUSTOM_IMG,
+    CONF_UPS_CUSTOM_IMG_FILE,
+    CONF_GENERATE_MP4,
 )
 from custom_components.mail_and_packages.helpers import _check_ffmpeg, _test_login
 from tests.const import FAKE_CONFIG_DATA, FAKE_CONFIG_DATA_BAD
@@ -40,6 +42,8 @@ _LOGGER = logging.getLogger(__name__)
             {
                 "allow_external": False,
                 "custom_img": True,
+                "amazon_custom_img": False,
+                "ups_custom_img": False,
                 "folder": '"INBOX"',
                 "generate_grid": False,
                 "generate_mp4": False,
@@ -95,6 +99,8 @@ _LOGGER = logging.getLogger(__name__)
                 "amazon_days": 3,
                 "amazon_domain": "amazon.com",
                 "amazon_fwds": "fakeuser@test.email,fakeuser2@test.email,amazon@example.com,fake@email%$^&@example.com,bogusemail@testamazon.com",
+                "amazon_custom_img": False,
+                "ups_custom_img": False,
                 "custom_img": True,
                 "custom_img_file": "images/test.gif",
                 "host": "imap.test.email",
@@ -287,6 +293,8 @@ async def test_form(
                 "amazon_days": 3,
                 "amazon_domain": "amazon.com",
                 "amazon_fwds": [],
+                "amazon_custom_img": False,
+                "ups_custom_img": False,
                 "custom_img": True,
                 "custom_img_file": "images/test.gif",
                 "host": "imap.test.email",
@@ -474,6 +482,8 @@ async def test_form_no_fwds(
                 "amazon_days": 3,
                 "amazon_domain": "amazon.com",
                 "amazon_fwds": ["fakeuser@test.email", "fakeuser2@test.email"],
+                "amazon_custom_img": False,
+                "ups_custom_img": False,
                 "custom_img": True,
                 "custom_img_file": "images/test.gif",
                 "host": "imap.test.email",
@@ -628,7 +638,7 @@ async def test_form_connection_error(input_1, step_id_2, hass, mock_imap):
 
 
 @pytest.mark.parametrize(
-    "input_1,step_id_2,input_2,step_id_3,input_3,title,data",
+    "input_1,step_id_2,input_2,step_id_3,input_3,step_id_4,input_4,title,data",
     [
         (
             {
@@ -683,11 +693,18 @@ async def test_form_connection_error(input_1, step_id_2, hass, mock_imap):
                 "amazon_days": 3,
                 "amazon_fwds": "(none)",
             },
+            "config_4",
+            {
+                "amazon_custom_img": False,
+                "ups_custom_img": False,
+            },
             "imap.test.email",
             {
                 "amazon_days": 3,
                 "amazon_domain": "amazon.com",
                 "amazon_fwds": [],
+                "amazon_custom_img": False,
+                "ups_custom_img": False,
                 "host": "imap.test.email",
                 "port": 993,
                 "username": "test@test.email",
@@ -734,7 +751,17 @@ async def test_form_connection_error(input_1, step_id_2, hass, mock_imap):
 )
 @pytest.mark.asyncio
 async def test_form_invalid_ffmpeg(
-    input_1, step_id_2, input_2, step_id_3, input_3, title, data, hass, mock_imap
+    input_1,
+    step_id_2,
+    input_2,
+    step_id_3,
+    input_3,
+    step_id_4,
+    input_4,
+    title,
+    data,
+    hass,
+    mock_imap,
 ):
     """Test we get the form."""
     await setup.async_setup_component(hass, "persistent_notification", {})
@@ -837,6 +864,8 @@ async def test_form_invalid_ffmpeg(
             {
                 "allow_external": False,
                 "custom_img": False,
+                "amazon_custom_img": False,
+                "ups_custom_img": False,
                 "amazon_days": 3,
                 "amazon_domain": "amazon.com",
                 "amazon_fwds": [],
@@ -1017,10 +1046,12 @@ async def test_form_index_error(
             "imap.test.email",
             {
                 "allow_external": False,
+                "custom_img": False,
+                "amazon_custom_img": False,
+                "ups_custom_img": False,
                 "amazon_days": 3,
                 "amazon_domain": "amazon.com",
                 "amazon_fwds": [],
-                "custom_img": False,
                 "host": "imap.test.email",
                 "port": 993,
                 "username": "test@test.email",
@@ -1197,6 +1228,8 @@ async def test_form_index_error_2(
             {
                 "allow_external": False,
                 "custom_img": False,
+                "amazon_custom_img": False,
+                "ups_custom_img": False,
                 "amazon_days": 3,
                 "amazon_domain": "amazon.com",
                 "amazon_fwds": [],
@@ -1376,6 +1409,8 @@ async def test_form_mailbox_format2(
             {
                 "allow_external": False,
                 "custom_img": False,
+                "amazon_custom_img": False,
+                "ups_custom_img": False,
                 "amazon_days": 3,
                 "amazon_domain": "amazon.com",
                 "amazon_fwds": [],
@@ -1653,7 +1688,7 @@ async def test_form_amazon_error(
 
 
 @pytest.mark.parametrize(
-    "input_1,step_id_2,input_2,step_id_3,input_3",
+    "input_1,step_id_2,input_2,step_id_3,input_3,step_id_4,input_4,title,data",
     [
         (
             {
@@ -1709,6 +1744,16 @@ async def test_form_amazon_error(
                 "amazon_days": 3,
                 "amazon_fwds": "@bademail.com, amazon.com",
             },
+            "config_4",
+            {
+                "amazon_custom_img": False,
+                "ups_custom_img": False,
+            },
+            "test_form_amazon_error_2",
+            {
+                "amazon_custom_img": False,
+                "ups_custom_img": False,
+            },
         ),
     ],
 )
@@ -1719,6 +1764,10 @@ async def test_form_amazon_error_2(
     input_2,
     step_id_3,
     input_3,
+    step_id_4,
+    input_4,
+    title,
+    data,
     mock_imap,
     hass,
     caplog,
@@ -2011,6 +2060,8 @@ async def test_form_storage_error(
                 "amazon_days": 3,
                 "amazon_domain": "amazon.com",
                 "amazon_fwds": "fakeuser@test.email,fakeuser2@test.email",
+                "amazon_custom_img": False,
+                "ups_custom_img": False,
                 "custom_img": True,
                 "custom_img_file": "images/test.gif",
                 "host": "imap.test.email",
@@ -2205,8 +2256,10 @@ async def test_reconfigure(
                 "amazon_days": 3,
                 "amazon_domain": "amazon.com",
                 "amazon_fwds": "fakeuser@fake.email, fakeuser2@fake.email",
+                "amazon_custom_img": False,
                 "custom_img": True,
                 "custom_img_file": "images/test.gif",
+                "ups_custom_img": False,
                 "host": "imap.test.email",
                 "port": 993,
                 "username": "test@test.email",
@@ -2327,7 +2380,7 @@ async def test_reconfigure_no_amazon(
 
 
 @pytest.mark.parametrize(
-    "input_1,step_id_2,input_2,step_id_3,input_3,title,data",
+    "input_1,step_id_2,input_2,step_id_3,input_3,step_id_4,input_4,title,data",
     [
         (
             {
@@ -2379,12 +2432,21 @@ async def test_reconfigure_no_amazon(
             {
                 "storage": ".storage/mail_and_packages/images",
             },
+            "reconfig_4",
+            {
+                "amazon_custom_img": False,
+                "amazon_custom_img_file": "custom_components/mail_and_packages/no_deliveries_amazon.jpg",
+                "ups_custom_img": False,
+                "ups_custom_img_file": "custom_components/mail_and_packages/no_deliveries_ups.jpg",
+            },
             "imap.test.email",
             {
                 "allow_external": False,
                 "amazon_days": 3,
                 "amazon_domain": "amazon.com",
                 "amazon_fwds": "fakeuser@fake.email, fakeuser2@fake.email",
+                "amazon_custom_img": False,
+                "ups_custom_img": False,
                 "custom_img": False,
                 "host": "imap.test.email",
                 "port": 993,
@@ -2439,6 +2501,8 @@ async def test_reconfigure_no_amazon_no_custom_image(
     input_2,
     step_id_3,
     input_3,
+    step_id_4,
+    input_4,
     title,
     data,
     hass: HomeAssistant,
@@ -2565,7 +2629,9 @@ async def test_reconfigure_no_amazon_no_custom_image(
                 "amazon_days": 3,
                 "amazon_domain": "amazon.com",
                 "amazon_fwds": "fakeuser@test.email,fakeuser2@test.email",
+                "amazon_custom_img": False,
                 "custom_img": False,
+                "ups_custom_img": False,
                 "host": "imap.test.email",
                 "port": 993,
                 "username": "test@test.email",
@@ -2688,7 +2754,7 @@ async def test_reconfig_no_cust_img(
 
 
 @pytest.mark.parametrize(
-    "input_1,step_id_2,input_2,step_id_3,input_3",
+    "input_1,step_id_2,input_2,step_id_3,input_3,step_id_4,input_4,title,data",
     [
         (
             {
@@ -2702,7 +2768,9 @@ async def test_reconfig_no_cust_img(
             "reconfig_2",
             {
                 "allow_external": False,
+                "amazon_custom_img": False,
                 "custom_img": False,
+                "ups_custom_img": False,
                 "folder": '"INBOX"',
                 "generate_grid": False,
                 "generate_mp4": False,
@@ -2754,6 +2822,10 @@ async def test_reconfig_amazon_error(
     input_2,
     step_id_3,
     input_3,
+    step_id_4,
+    input_4,
+    title,
+    data,
     hass: HomeAssistant,
     integration,
     mock_imap_no_email,
@@ -2823,7 +2895,9 @@ async def test_reconfig_amazon_error(
             "reconfig_2",
             {
                 "allow_external": False,
+                "amazon_custom_img": False,
                 "custom_img": False,
+                "ups_custom_img": False,
                 "folder": '"INBOX"',
                 "generate_grid": False,
                 "generate_mp4": False,
@@ -2894,3 +2968,2021 @@ async def test_reconfig_storage_error(
     assert result["type"] == "form"
     assert result["step_id"] == step_id_3
     assert result["errors"] == {CONF_STORAGE: "path_not_found"}
+
+
+@pytest.mark.asyncio
+async def test_reconfigure_with_custom_images(
+    input_1,
+    step_id_2,
+    input_2,
+    step_id_3,
+    input_3,
+    step_id_4,
+    input_4,
+    step_id_5,
+    input_5,
+    title,
+    data,
+    hass: HomeAssistant,
+    integration,
+    mock_imap_no_email,
+    mock_osremove,
+    mock_osmakedir,
+    mock_listdir,
+    mock_update_time,
+    mock_copy_overlays,
+    mock_hash_file,
+    mock_getctime_today,
+    mock_update,
+) -> None:
+    """Test reconfigure flow with custom Amazon and USPS images."""
+    entry = integration
+
+    with patch(
+        "custom_components.mail_and_packages.config_flow.path",
+        return_value=True,
+    ):
+
+        reconfigure_result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={
+                "source": config_entries.SOURCE_RECONFIGURE,
+                "entry_id": entry.entry_id,
+            },
+        )
+        assert reconfigure_result["type"] is FlowResultType.FORM
+        assert reconfigure_result["step_id"] == "reconfigure"
+
+        result = await hass.config_entries.flow.async_configure(
+            reconfigure_result["flow_id"],
+            input_1,
+        )
+        assert result["type"] == "form"
+        assert result["step_id"] == step_id_2
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], input_2
+        )
+
+        assert result["type"] == "form"
+        assert result["step_id"] == step_id_3
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], input_4
+        )
+
+        assert result["type"] == "form"
+        assert result["step_id"] == step_id_5
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], input_5
+        )
+
+        assert result["type"] is FlowResultType.ABORT
+        assert result["reason"] == "reconfigure_successful"
+        await hass.async_block_till_done()
+
+        _LOGGER.debug("Entries: %s", len(hass.config_entries.async_entries(DOMAIN)))
+        entry = hass.config_entries.async_entries(DOMAIN)[0]
+        actual_data = entry.data.copy()
+        # Sort lists for comparison
+        if "resources" in actual_data:
+            actual_data["resources"] = sorted(actual_data["resources"])
+        if "resources" in data:
+            data["resources"] = sorted(data["resources"])
+
+        # Compare key by key to handle any differences
+        for key in data:
+            assert actual_data[key] == data[key], f"Mismatch for key {key}"
+
+
+@pytest.mark.parametrize(
+    "input_1,step_id_2,input_2,step_id_amazon,input_amazon,step_id_storage,input_storage,title,data",
+    [
+        (
+            {
+                "host": "imap.test.email",
+                "port": "993",
+                "username": "test@test.email",
+                "password": "notarealpassword",
+                "imap_security": "SSL",
+                "verify_ssl": False,
+            },
+            "reconfig_2",
+            {
+                "allow_external": False,
+                "custom_img": False,
+                "folder": '"INBOX"',
+                "generate_grid": False,
+                "generate_mp4": False,
+                "gif_duration": 5,
+                "imap_timeout": 120,
+                "scan_interval": 60,
+                "resources": [
+                    "amazon_packages",
+                    "fedex_delivered",
+                    "fedex_delivering",
+                    "fedex_packages",
+                    "mail_updated",
+                    "ups_delivered",
+                    "ups_delivering",
+                    "ups_packages",
+                    "usps_delivered",
+                    "usps_delivering",
+                    "usps_mail",
+                    "usps_packages",
+                    "zpackages_delivered",
+                    "zpackages_transit",
+                    "dhl_delivered",
+                    "dhl_delivering",
+                    "dhl_packages",
+                    "amazon_delivered",
+                    "auspost_delivered",
+                    "auspost_delivering",
+                    "auspost_packages",
+                    "poczta_polska_delivering",
+                    "poczta_polska_packages",
+                    "inpost_pl_delivered",
+                    "inpost_pl_delivering",
+                    "inpost_pl_packages",
+                ],
+            },
+            "reconfig_amazon",
+            {
+                "amazon_domain": "amazon.com",
+                "amazon_days": 3,
+                "amazon_fwds": "fakeuser@test.email,fakeuser2@test.email",
+            },
+            "reconfig_storage",
+            {
+                "storage": ".storage/mail_and_packages/images",
+            },
+            "imap.test.email",
+            {
+                "allow_external": False,
+                "amazon_days": 3,
+                "amazon_domain": "amazon.com",
+                "amazon_fwds": "fakeuser@test.email,fakeuser2@test.email",
+                "custom_img": False,
+                "host": "imap.test.email",
+                "port": 993,
+                "username": "test@test.email",
+                "password": "notarealpassword",
+                "folder": '"INBOX"',
+                "generate_grid": False,
+                "generate_mp4": False,
+                "gif_duration": 5,
+                "image_name": "mail_today.gif",
+                "image_path": "custom_components/mail_and_packages/images/",
+                "image_security": True,
+                "imap_security": "SSL",
+                "imap_timeout": 120,
+                "scan_interval": 60,
+                "storage": ".storage/mail_and_packages/images",
+                "resources": [
+                    "amazon_delivered",
+                    "amazon_packages",
+                    "auspost_delivered",
+                    "auspost_delivering",
+                    "auspost_packages",
+                    "dhl_delivered",
+                    "dhl_delivering",
+                    "dhl_packages",
+                    "fedex_delivered",
+                    "fedex_delivering",
+                    "fedex_packages",
+                    "inpost_pl_delivered",
+                    "inpost_pl_delivering",
+                    "inpost_pl_packages",
+                    "mail_updated",
+                    "poczta_polska_delivering",
+                    "poczta_polska_packages",
+                    "ups_delivered",
+                    "ups_delivering",
+                    "ups_packages",
+                    "usps_delivered",
+                    "usps_delivering",
+                    "usps_mail",
+                    "usps_packages",
+                    "zpackages_delivered",
+                    "zpackages_transit",
+                ],
+                "verify_ssl": False,
+            },
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_reconfigure_with_default_images(
+    input_1,
+    step_id_2,
+    input_2,
+    step_id_amazon,
+    input_amazon,
+    step_id_storage,
+    input_storage,
+    title,
+    data,
+    hass: HomeAssistant,
+    integration,
+    mock_imap_no_email,
+    mock_osremove,
+    mock_osmakedir,
+    mock_listdir,
+    mock_update_time,
+    mock_copy_overlays,
+    mock_hash_file,
+    mock_getctime_today,
+    mock_update,
+) -> None:
+    """Test reconfigure flow with default images."""
+    entry = integration
+
+    with patch(
+        "custom_components.mail_and_packages.config_flow.path",
+        return_value=True,
+    ):
+
+        reconfigure_result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={
+                "source": config_entries.SOURCE_RECONFIGURE,
+                "entry_id": entry.entry_id,
+            },
+        )
+        assert reconfigure_result["type"] is FlowResultType.FORM
+        assert reconfigure_result["step_id"] == "reconfigure"
+
+        result = await hass.config_entries.flow.async_configure(
+            reconfigure_result["flow_id"],
+            input_1,
+        )
+        assert result["type"] == "form"
+        assert result["step_id"] == step_id_2
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], input_2
+        )
+
+        assert result["type"] == "form"
+        assert result["step_id"] == step_id_amazon
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], input_amazon
+        )
+
+        assert result["type"] == "form"
+        assert result["step_id"] == step_id_storage
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], input_storage
+        )
+
+        assert result["type"] is FlowResultType.ABORT
+        assert result["reason"] == "reconfigure_successful"
+        await hass.async_block_till_done()
+
+        _LOGGER.debug("Entries: %s", len(hass.config_entries.async_entries(DOMAIN)))
+        entry = hass.config_entries.async_entries(DOMAIN)[0]
+        actual_data = entry.data.copy()
+        # Sort lists for comparison
+        if "resources" in actual_data:
+            actual_data["resources"] = sorted(actual_data["resources"])
+        if "resources" in data:
+            data["resources"] = sorted(data["resources"])
+
+        # Compare key by key to handle any differences
+        for key in data:
+            assert actual_data[key] == data[key], f"Mismatch for key {key}"
+
+
+@pytest.mark.parametrize(
+    "input_1,step_id_2,input_2,step_id_amazon,input_amazon,step_id_3,input_3,step_id_storage,input_storage,title,data",
+    [
+        (
+            {
+                "host": "imap.test.email",
+                "port": "993",
+                "username": "test@test.email",
+                "password": "notarealpassword",
+                "imap_security": "SSL",
+                "verify_ssl": False,
+            },
+            "config_2",
+            {
+                "allow_external": False,
+                "custom_img": False,
+                "folder": '"INBOX"',
+                "generate_grid": False,
+                "generate_mp4": False,
+                "gif_duration": 5,
+                "imap_timeout": 30,
+                "scan_interval": 20,
+                "resources": [
+                    "amazon_packages",
+                    "fedex_delivered",
+                    "fedex_delivering",
+                    "fedex_packages",
+                    "mail_updated",
+                    "ups_delivered",
+                    "ups_delivering",
+                    "ups_packages",
+                    "usps_delivered",
+                    "usps_delivering",
+                    "usps_mail",
+                    "usps_packages",
+                    "zpackages_delivered",
+                    "zpackages_transit",
+                    "dhl_delivered",
+                    "dhl_delivering",
+                    "dhl_packages",
+                    "amazon_delivered",
+                    "auspost_delivered",
+                    "auspost_delivering",
+                    "auspost_packages",
+                    "poczta_polska_delivering",
+                    "poczta_polska_packages",
+                    "inpost_pl_delivered",
+                    "inpost_pl_delivering",
+                    "inpost_pl_packages",
+                ],
+            },
+            "config_amazon",
+            {
+                "amazon_domain": "amazon.com",
+                "amazon_days": 3,
+                "amazon_fwds": "fakeuser@test.email,fakeuser2@test.email",
+            },
+            "config_3",
+            {
+                "amazon_custom_img_file": "images/amazon_custom.jpg",
+            },
+            "config_storage",
+            {
+                "storage": ".storage/mail_and_packages/images",
+            },
+            "imap.test.email",
+            {
+                "allow_external": False,
+                "amazon_days": 3,
+                "amazon_domain": "amazon.com",
+                "amazon_fwds": "fakeuser@test.email,fakeuser2@test.email",
+                "amazon_custom_img": True,
+                "amazon_custom_img_file": "images/amazon_custom.jpg",
+                "custom_img": False,
+                "host": "imap.test.email",
+                "port": 993,
+                "username": "test@test.email",
+                "password": "notarealpassword",
+                "folder": '"INBOX"',
+                "generate_grid": False,
+                "generate_mp4": False,
+                "gif_duration": 5,
+                "image_name": "mail_today.gif",
+                "image_path": "custom_components/mail_and_packages/images/",
+                "image_security": True,
+                "imap_security": "SSL",
+                "imap_timeout": 30,
+                "scan_interval": 20,
+                "storage": ".storage/mail_and_packages/images",
+                "resources": [
+                    "amazon_delivered",
+                    "amazon_packages",
+                    "auspost_delivered",
+                    "auspost_delivering",
+                    "auspost_packages",
+                    "dhl_delivered",
+                    "dhl_delivering",
+                    "dhl_packages",
+                    "fedex_delivered",
+                    "fedex_delivering",
+                    "fedex_packages",
+                    "inpost_pl_delivered",
+                    "inpost_pl_delivering",
+                    "inpost_pl_packages",
+                    "mail_updated",
+                    "poczta_polska_delivering",
+                    "poczta_polska_packages",
+                    "ups_delivered",
+                    "ups_delivering",
+                    "ups_packages",
+                    "usps_delivered",
+                    "usps_delivering",
+                    "usps_mail",
+                    "usps_packages",
+                    "zpackages_delivered",
+                    "zpackages_transit",
+                ],
+                "ups_custom_img": False,
+                "ups_custom_img_file": "custom_components/mail_and_packages/no_deliveries_ups.jpg",
+                "verify_ssl": False,
+            },
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_config_flow_with_amazon_custom_image_only(
+    input_1,
+    step_id_2,
+    input_2,
+    step_id_amazon,
+    input_amazon,
+    step_id_3,
+    input_3,
+    step_id_storage,
+    input_storage,
+    title,
+    data,
+    hass,
+    mock_imap,
+):
+    """Test config flow with Amazon custom image only."""
+    await setup.async_setup_component(hass, "persistent_notification", {})
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    assert result["type"] == "form"
+    assert result["errors"] == {}
+
+    with patch(
+        "custom_components.mail_and_packages.config_flow._test_login", return_value=True
+    ), patch(
+        "custom_components.mail_and_packages.config_flow._check_ffmpeg",
+        return_value=True,
+    ), patch(
+        "custom_components.mail_and_packages.config_flow.path",
+        return_value=True,
+    ), patch(
+        "custom_components.mail_and_packages.async_setup", return_value=True
+    ) as mock_setup, patch(
+        "custom_components.mail_and_packages.async_setup_entry",
+        return_value=True,
+    ) as mock_setup_entry:
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], input_1
+        )
+        assert result["type"] == "form"
+        assert result["step_id"] == step_id_2
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], input_2
+        )
+
+        assert result["type"] == "form"
+        assert result["step_id"] == step_id_amazon
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], input_amazon
+        )
+
+        assert result["type"] == "form"
+        assert result["step_id"] == step_id_3
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], input_3
+        )
+
+        assert result["type"] == "form"
+        assert result["step_id"] == step_id_storage
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], input_storage
+        )
+
+    assert result["type"] == "create_entry"
+    assert result["title"] == title
+    actual_data = result["data"]
+    # Sort lists for comparison
+    if "resources" in actual_data:
+        actual_data["resources"] = sorted(actual_data["resources"])
+    if "resources" in data:
+        data["resources"] = sorted(data["resources"])
+
+    # Compare key by key to handle any differences
+    for key in data:
+        assert actual_data[key] == data[key], f"Mismatch for key {key}"
+
+    await hass.async_block_till_done()
+    assert len(mock_setup.mock_calls) == 1
+    assert len(mock_setup_entry.mock_calls) == 1
+
+
+@pytest.mark.parametrize(
+    "input_1,step_id_2,input_2,step_id_amazon,input_amazon,step_id_3,input_3,step_id_storage,input_storage,title,data",
+    [
+        (
+            {
+                "host": "imap.test.email",
+                "port": "993",
+                "username": "test@test.email",
+                "password": "notarealpassword",
+                "imap_security": "SSL",
+                "verify_ssl": False,
+            },
+            "config_2",
+            {
+                "allow_external": False,
+                "custom_img": False,
+                "folder": '"INBOX"',
+                "generate_grid": False,
+                "generate_mp4": False,
+                "gif_duration": 5,
+                "imap_timeout": 30,
+                "scan_interval": 20,
+                "resources": [
+                    "amazon_packages",
+                    "fedex_delivered",
+                    "fedex_delivering",
+                    "fedex_packages",
+                    "mail_updated",
+                    "ups_delivered",
+                    "ups_delivering",
+                    "ups_packages",
+                    "usps_delivered",
+                    "usps_delivering",
+                    "usps_mail",
+                    "usps_packages",
+                    "zpackages_delivered",
+                    "zpackages_transit",
+                    "dhl_delivered",
+                    "dhl_delivering",
+                    "dhl_packages",
+                    "amazon_delivered",
+                    "auspost_delivered",
+                    "auspost_delivering",
+                    "auspost_packages",
+                    "poczta_polska_delivering",
+                    "poczta_polska_packages",
+                    "inpost_pl_delivered",
+                    "inpost_pl_delivering",
+                    "inpost_pl_packages",
+                ],
+            },
+            "config_amazon",
+            {
+                "amazon_domain": "amazon.com",
+                "amazon_days": 3,
+                "amazon_fwds": "fakeuser@test.email,fakeuser2@test.email",
+            },
+            "config_3",
+            {
+                "ups_custom_img_file": "images/ups_custom.jpg",
+            },
+            "config_storage",
+            {
+                "storage": ".storage/mail_and_packages/images",
+            },
+            "imap.test.email",
+            {
+                "allow_external": False,
+                "amazon_days": 3,
+                "amazon_domain": "amazon.com",
+                "amazon_fwds": "fakeuser@test.email,fakeuser2@test.email",
+                "amazon_custom_img": False,
+                "custom_img": False,
+                "host": "imap.test.email",
+                "port": 993,
+                "username": "test@test.email",
+                "password": "notarealpassword",
+                "folder": '"INBOX"',
+                "generate_grid": False,
+                "generate_mp4": False,
+                "gif_duration": 5,
+                "image_name": "mail_today.gif",
+                "image_path": "custom_components/mail_and_packages/images/",
+                "image_security": True,
+                "imap_security": "SSL",
+                "imap_timeout": 30,
+                "scan_interval": 20,
+                "storage": ".storage/mail_and_packages/images",
+                "resources": [
+                    "amazon_delivered",
+                    "amazon_packages",
+                    "auspost_delivered",
+                    "auspost_delivering",
+                    "auspost_packages",
+                    "dhl_delivered",
+                    "dhl_delivering",
+                    "dhl_packages",
+                    "fedex_delivered",
+                    "fedex_delivering",
+                    "fedex_packages",
+                    "inpost_pl_delivered",
+                    "inpost_pl_delivering",
+                    "inpost_pl_packages",
+                    "mail_updated",
+                    "poczta_polska_delivering",
+                    "poczta_polska_packages",
+                    "ups_delivered",
+                    "ups_delivering",
+                    "ups_packages",
+                    "usps_delivered",
+                    "usps_delivering",
+                    "usps_mail",
+                    "usps_packages",
+                    "zpackages_delivered",
+                    "zpackages_transit",
+                ],
+                "ups_custom_img": True,
+                "ups_custom_img_file": "images/ups_custom.jpg",
+                "verify_ssl": False,
+            },
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_config_flow_with_ups_custom_image_only(
+    input_1,
+    step_id_2,
+    input_2,
+    step_id_amazon,
+    input_amazon,
+    step_id_3,
+    input_3,
+    step_id_storage,
+    input_storage,
+    title,
+    data,
+    hass,
+    mock_imap,
+):
+    """Test config flow with UPS custom image only."""
+    await setup.async_setup_component(hass, "persistent_notification", {})
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    assert result["type"] == "form"
+    assert result["errors"] == {}
+
+    with patch(
+        "custom_components.mail_and_packages.config_flow._test_login", return_value=True
+    ), patch(
+        "custom_components.mail_and_packages.config_flow._check_ffmpeg",
+        return_value=True,
+    ), patch(
+        "custom_components.mail_and_packages.config_flow.path",
+        return_value=True,
+    ), patch(
+        "custom_components.mail_and_packages.async_setup", return_value=True
+    ) as mock_setup, patch(
+        "custom_components.mail_and_packages.async_setup_entry",
+        return_value=True,
+    ) as mock_setup_entry:
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], input_1
+        )
+        assert result["type"] == "form"
+        assert result["step_id"] == step_id_2
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], input_2
+        )
+
+        assert result["type"] == "form"
+        assert result["step_id"] == step_id_amazon
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], input_amazon
+        )
+
+        assert result["type"] == "form"
+        assert result["step_id"] == step_id_3
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], input_3
+        )
+
+        assert result["type"] == "form"
+        assert result["step_id"] == step_id_storage
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], input_storage
+        )
+
+    assert result["type"] == "create_entry"
+    assert result["title"] == title
+    actual_data = result["data"]
+    # Sort lists for comparison
+    if "resources" in actual_data:
+        actual_data["resources"] = sorted(actual_data["resources"])
+    if "resources" in data:
+        data["resources"] = sorted(data["resources"])
+
+    # Compare key by key to handle any differences
+    for key in data:
+        assert actual_data[key] == data[key], f"Mismatch for key {key}"
+
+    await hass.async_block_till_done()
+    assert len(mock_setup.mock_calls) == 1
+    assert len(mock_setup_entry.mock_calls) == 1
+
+
+@pytest.mark.parametrize(
+    "input_1,step_id_2,input_2,step_id_3,input_3,step_id_4,input_4,step_id_5,input_5,title,data",
+    [
+        (
+            {
+                "host": "imap.test.email",
+                "port": "993",
+                "username": "test@test.email",
+                "password": "notarealpassword",
+                "imap_security": "SSL",
+                "verify_ssl": False,
+            },
+            "reconfig_2",
+            {
+                "allow_external": False,
+                "custom_img": True,
+                "amazon_custom_img": True,
+                "ups_custom_img": True,
+                "folder": '"INBOX"',
+                "generate_grid": False,
+                "generate_mp4": False,
+                "gif_duration": 5,
+                "imap_timeout": 30,
+                "scan_interval": 20,
+                "resources": [
+                    "mail_updated",
+                    "usps_delivered",
+                    "usps_delivering",
+                    "usps_mail",
+                    "usps_packages",
+                    "amazon_delivered",
+                    "amazon_packages",
+                    "ups_delivered",
+                    "ups_delivering",
+                    "ups_packages",
+                    "zpackages_delivered",
+                    "zpackages_transit",
+                ],
+            },
+            "reconfig_amazon",
+            {
+                "amazon_days": 3,
+                "amazon_domain": "amazon.com",
+                "amazon_fwds": "fakeuser@test.email,fakeuser2@test.email",
+            },
+            "reconfig_3",
+            {
+                "custom_img_file": "images/test.gif",
+                "amazon_custom_img_file": "images/test_amazon.jpg",
+                "ups_custom_img_file": "images/test_ups.jpg",
+            },
+            "reconfig_storage",
+            {
+                "storage": ".storage/mail_and_packages/images",
+            },
+            "imap.test.email",
+            {
+                "allow_external": False,
+                "amazon_days": 3,
+                "amazon_domain": "amazon.com",
+                "amazon_fwds": "fakeuser@test.email,fakeuser2@test.email",
+                "custom_img": True,
+                "custom_img_file": "images/test.gif",
+                "amazon_custom_img": True,
+                "amazon_custom_img_file": "images/test_amazon.jpg",
+                "ups_custom_img": True,
+                "ups_custom_img_file": "images/test_ups.jpg",
+                "host": "imap.test.email",
+                "port": 993,
+                "username": "test@test.email",
+                "password": "notarealpassword",
+                "folder": '"INBOX"',
+                "generate_grid": False,
+                "generate_mp4": False,
+                "gif_duration": 5,
+                "image_name": "mail_today.gif",
+                "image_path": "custom_components/mail_and_packages/images/",
+                "image_security": True,
+                "imap_security": "SSL",
+                "imap_timeout": 30,
+                "scan_interval": 20,
+                "storage": ".storage/mail_and_packages/images",
+                "resources": [
+                    "mail_updated",
+                    "usps_delivered",
+                    "usps_delivering",
+                    "usps_mail",
+                    "usps_packages",
+                    "amazon_delivered",
+                    "amazon_packages",
+                    "ups_delivered",
+                    "ups_delivering",
+                    "ups_packages",
+                    "zpackages_delivered",
+                    "zpackages_transit",
+                ],
+                "verify_ssl": False,
+            },
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_reconfigure_with_custom_images(
+    input_1,
+    step_id_2,
+    input_2,
+    step_id_3,
+    input_3,
+    step_id_4,
+    input_4,
+    step_id_5,
+    input_5,
+    title,
+    data,
+    hass: HomeAssistant,
+    integration,
+    mock_imap_no_email,
+    mock_osremove,
+    mock_osmakedir,
+    mock_listdir,
+    mock_update_time,
+    mock_copy_overlays,
+    mock_hash_file,
+    mock_getctime_today,
+    mock_update,
+) -> None:
+    """Test reconfigure flow with custom Amazon and UPS images."""
+    entry = integration
+
+    with patch(
+        "custom_components.mail_and_packages.config_flow.path",
+        return_value=True,
+    ):
+
+        reconfigure_result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={
+                "source": config_entries.SOURCE_RECONFIGURE,
+                "entry_id": entry.entry_id,
+            },
+        )
+        assert reconfigure_result["type"] is FlowResultType.FORM
+        assert reconfigure_result["step_id"] == "reconfigure"
+
+        result = await hass.config_entries.flow.async_configure(
+            reconfigure_result["flow_id"],
+            input_1,
+        )
+        assert result["type"] == "form"
+        assert result["step_id"] == step_id_2
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], input_2
+        )
+
+        assert result["type"] == "form"
+        assert result["step_id"] == step_id_3
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], input_3
+        )
+
+        assert result["type"] == "form"
+        assert result["step_id"] == step_id_4
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], input_4
+        )
+
+        assert result["type"] == "form"
+        assert result["step_id"] == step_id_5
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], input_5
+        )
+
+        assert result["type"] is FlowResultType.ABORT
+        assert result["reason"] == "reconfigure_successful"
+        await hass.async_block_till_done()
+
+        entry = hass.config_entries.async_entries(DOMAIN)[0]
+        actual_data = entry.data.copy()
+
+        for key in data:
+            assert key in actual_data, f"Missing key: {key}"
+            expected_value = data[key]
+            actual_value = actual_data[key]
+            # Sort lists before comparison to handle order differences
+            if isinstance(expected_value, list) and isinstance(actual_value, list):
+                expected_value = sorted(expected_value)
+                actual_value = sorted(actual_value)
+            assert (
+                expected_value == actual_value
+            ), f"Value mismatch for {key}: expected {data[key]}, got {actual_data[key]}"
+        for key in actual_data:
+            assert key in data, f"Extra key: {key}"
+
+
+@pytest.mark.parametrize(
+    "input_1,step_id_2,input_2,step_id_amazon,input_amazon,step_id_storage,input_storage,title,data",
+    [
+        (
+            {
+                "host": "imap.test.email",
+                "port": "993",
+                "username": "test@test.email",
+                "password": "notarealpassword",
+                "imap_security": "SSL",
+                "verify_ssl": False,
+            },
+            "reconfig_2",
+            {
+                "allow_external": False,
+                "custom_img": False,
+                "amazon_custom_img": False,
+                "ups_custom_img": False,
+                "folder": '"INBOX"',
+                "generate_grid": False,
+                "generate_mp4": False,
+                "gif_duration": 5,
+                "imap_timeout": 30,
+                "scan_interval": 20,
+                "resources": [
+                    "mail_updated",
+                    "usps_delivered",
+                    "usps_delivering",
+                    "usps_mail",
+                    "usps_packages",
+                    "amazon_delivered",
+                    "amazon_packages",
+                    "ups_delivered",
+                    "ups_delivering",
+                    "ups_packages",
+                    "zpackages_delivered",
+                    "zpackages_transit",
+                ],
+            },
+            "reconfig_amazon",
+            {
+                "amazon_days": 3,
+                "amazon_domain": "amazon.com",
+                "amazon_fwds": "fakeuser@test.email,fakeuser2@test.email",
+            },
+            "reconfig_storage",
+            {
+                "storage": ".storage/mail_and_packages/images",
+            },
+            "imap.test.email",
+            {
+                "allow_external": False,
+                "amazon_days": 3,
+                "amazon_domain": "amazon.com",
+                "amazon_fwds": "fakeuser@test.email,fakeuser2@test.email",
+                "custom_img": False,
+                "amazon_custom_img": False,
+                "ups_custom_img": False,
+                "host": "imap.test.email",
+                "port": 993,
+                "username": "test@test.email",
+                "password": "notarealpassword",
+                "folder": '"INBOX"',
+                "generate_grid": False,
+                "generate_mp4": False,
+                "gif_duration": 5,
+                "image_name": "mail_today.gif",
+                "image_path": "custom_components/mail_and_packages/images/",
+                "image_security": True,
+                "imap_security": "SSL",
+                "imap_timeout": 30,
+                "scan_interval": 20,
+                "storage": ".storage/mail_and_packages/images",
+                "resources": [
+                    "mail_updated",
+                    "usps_delivered",
+                    "usps_delivering",
+                    "usps_mail",
+                    "usps_packages",
+                    "amazon_delivered",
+                    "amazon_packages",
+                    "ups_delivered",
+                    "ups_delivering",
+                    "ups_packages",
+                    "zpackages_delivered",
+                    "zpackages_transit",
+                ],
+                "verify_ssl": False,
+            },
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_reconfigure_with_default_images(
+    input_1,
+    step_id_2,
+    input_2,
+    step_id_amazon,
+    input_amazon,
+    step_id_storage,
+    input_storage,
+    title,
+    data,
+    hass: HomeAssistant,
+    integration,
+    mock_imap_no_email,
+    mock_osremove,
+    mock_osmakedir,
+    mock_listdir,
+    mock_update_time,
+    mock_copy_overlays,
+    mock_hash_file,
+    mock_getctime_today,
+    mock_update,
+) -> None:
+    """Test reconfigure flow with default Amazon and UPS images."""
+    entry = integration
+
+    with patch(
+        "custom_components.mail_and_packages.config_flow.path",
+        return_value=True,
+    ):
+
+        reconfigure_result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={
+                "source": config_entries.SOURCE_RECONFIGURE,
+                "entry_id": entry.entry_id,
+            },
+        )
+        assert reconfigure_result["type"] is FlowResultType.FORM
+        assert reconfigure_result["step_id"] == "reconfigure"
+
+        result = await hass.config_entries.flow.async_configure(
+            reconfigure_result["flow_id"],
+            input_1,
+        )
+        assert result["type"] == "form"
+        assert result["step_id"] == step_id_2
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], input_2
+        )
+
+        assert result["type"] == "form"
+        assert result["step_id"] == step_id_amazon
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], input_amazon
+        )
+
+        assert result["type"] == "form"
+        assert result["step_id"] == step_id_storage
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], input_storage
+        )
+
+        assert result["type"] is FlowResultType.ABORT
+        assert result["reason"] == "reconfigure_successful"
+        await hass.async_block_till_done()
+
+        entry = hass.config_entries.async_entries(DOMAIN)[0]
+        actual_data = entry.data.copy()
+        # Compare dictionaries by checking each key-value pair
+        for key in data:
+            assert key in actual_data, f"Missing key: {key}"
+            expected_value = data[key]
+            actual_value = actual_data[key]
+            # Sort lists before comparison to handle order differences
+            if isinstance(expected_value, list) and isinstance(actual_value, list):
+                expected_value = sorted(expected_value)
+                actual_value = sorted(actual_value)
+            assert (
+                expected_value == actual_value
+            ), f"Value mismatch for {key}: expected {data[key]}, got {actual_data[key]}"
+        for key in actual_data:
+            assert key in data, f"Extra key: {key}"
+
+
+@pytest.mark.asyncio
+async def test_config_flow_with_amazon_custom_image_only(
+    hass: HomeAssistant,
+    mock_imap_no_email,
+    mock_osremove,
+    mock_osmakedir,
+    mock_listdir,
+    mock_update_time,
+    mock_copy_overlays,
+    mock_hash_file,
+    mock_getctime_today,
+    mock_update,
+) -> None:
+    """Test config flow with only Amazon custom image enabled."""
+    await setup.async_setup_component(hass, "persistent_notification", {})
+    with patch(
+        "custom_components.mail_and_packages.config_flow._test_login", return_value=True
+    ), patch(
+        "custom_components.mail_and_packages.config_flow._check_ffmpeg",
+        return_value=True,
+    ), patch(
+        "custom_components.mail_and_packages.async_setup", return_value=True
+    ) as mock_setup, patch(
+        "custom_components.mail_and_packages.async_setup_entry",
+        return_value=True,
+    ) as mock_setup_entry, patch(
+        "custom_components.mail_and_packages.config_flow.path",
+        return_value=True,
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        assert result["type"] is FlowResultType.FORM
+        assert result["step_id"] == "user"
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                "host": "imap.test.email",
+                "port": "993",
+                "username": "test@test.email",
+                "password": "notarealpassword",
+                "imap_security": "SSL",
+                "verify_ssl": False,
+            },
+        )
+        assert result["type"] == "form"
+        assert result["step_id"] == "config_2"
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                "allow_external": False,
+                "custom_img": False,
+                "amazon_custom_img": True,
+                "ups_custom_img": False,
+                "folder": '"INBOX"',
+                "generate_grid": False,
+                "generate_mp4": False,
+                "gif_duration": 5,
+                "imap_timeout": 30,
+                "scan_interval": 20,
+                "resources": [
+                    "mail_updated",
+                    "usps_delivered",
+                    "usps_delivering",
+                    "usps_mail",
+                    "usps_packages",
+                    "amazon_delivered",
+                    "amazon_packages",
+                    "ups_delivered",
+                    "ups_delivering",
+                    "ups_packages",
+                    "zpackages_delivered",
+                    "zpackages_transit",
+                ],
+            },
+        )
+        assert result["type"] == "form"
+        assert result["step_id"] == "config_amazon"
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                "amazon_days": 3,
+                "amazon_domain": "amazon.com",
+                "amazon_fwds": "fakeuser@test.email,fakeuser2@test.email",
+            },
+        )
+
+        assert result["type"] == "form"
+        assert result["step_id"] == "config_3"
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                "amazon_custom_img_file": "images/test_amazon_only.jpg",
+            },
+        )
+
+        assert result["type"] == "form"
+        assert result["step_id"] == "config_storage"
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                "storage": ".storage/mail_and_packages/images",
+            },
+        )
+
+        assert result["type"] is FlowResultType.CREATE_ENTRY
+        assert result["title"] == "imap.test.email"
+        actual_data = result["data"]
+        expected_data = {
+            "allow_external": False,
+            "amazon_days": 3,
+            "amazon_domain": "amazon.com",
+            "amazon_fwds": "fakeuser@test.email,fakeuser2@test.email",
+            "custom_img": False,
+            "amazon_custom_img": True,
+            "amazon_custom_img_file": "images/test_amazon_only.jpg",
+            "ups_custom_img": False,
+            "host": "imap.test.email",
+            "port": 993,
+            "username": "test@test.email",
+            "password": "notarealpassword",
+            "folder": '"INBOX"',
+            "generate_grid": False,
+            "generate_mp4": False,
+            "gif_duration": 5,
+            "imap_security": "SSL",
+            "imap_timeout": 30,
+            "scan_interval": 20,
+            "storage": ".storage/mail_and_packages/images",
+            "resources": [
+                "mail_updated",
+                "usps_delivered",
+                "usps_delivering",
+                "usps_mail",
+                "usps_packages",
+                "amazon_delivered",
+                "amazon_packages",
+                "ups_delivered",
+                "ups_delivering",
+                "ups_packages",
+                "zpackages_delivered",
+                "zpackages_transit",
+            ],
+            "verify_ssl": False,
+        }
+        # Compare dictionaries by checking each key-value pair
+        for key in expected_data:
+            assert key in actual_data, f"Missing key: {key}"
+            expected_value = expected_data[key]
+            actual_value = actual_data[key]
+            # Sort lists before comparison to handle order differences
+            if isinstance(expected_value, list) and isinstance(actual_value, list):
+                expected_value = sorted(expected_value)
+                actual_value = sorted(actual_value)
+            assert (
+                expected_value == actual_value
+            ), f"Value mismatch for {key}: expected {expected_data[key]}, got {actual_data[key]}"
+            for key in actual_data:
+                assert key in expected_data, f"Extra key: {key}"
+
+
+@pytest.mark.asyncio
+async def test_config_flow_with_ups_custom_image_only(
+    hass: HomeAssistant,
+    mock_imap_no_email,
+    mock_osremove,
+    mock_osmakedir,
+    mock_listdir,
+    mock_update_time,
+    mock_copy_overlays,
+    mock_hash_file,
+    mock_getctime_today,
+    mock_update,
+) -> None:
+    """Test config flow with only UPS custom image enabled."""
+    await setup.async_setup_component(hass, "persistent_notification", {})
+    with patch(
+        "custom_components.mail_and_packages.config_flow._test_login", return_value=True
+    ), patch(
+        "custom_components.mail_and_packages.config_flow._check_ffmpeg",
+        return_value=True,
+    ), patch(
+        "custom_components.mail_and_packages.async_setup", return_value=True
+    ) as mock_setup, patch(
+        "custom_components.mail_and_packages.async_setup_entry",
+        return_value=True,
+    ) as mock_setup_entry, patch(
+        "custom_components.mail_and_packages.config_flow.path",
+        return_value=True,
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        assert result["type"] is FlowResultType.FORM
+        assert result["step_id"] == "user"
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                "host": "imap.test.email",
+                "port": "993",
+                "username": "test@test.email",
+                "password": "notarealpassword",
+                "imap_security": "SSL",
+                "verify_ssl": False,
+            },
+        )
+        assert result["type"] == "form"
+        assert result["step_id"] == "config_2"
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                "allow_external": False,
+                "custom_img": False,
+                "amazon_custom_img": False,
+                "ups_custom_img": True,
+                "folder": '"INBOX"',
+                "generate_grid": False,
+                "generate_mp4": False,
+                "gif_duration": 5,
+                "imap_timeout": 30,
+                "scan_interval": 20,
+                "resources": [
+                    "mail_updated",
+                    "usps_delivered",
+                    "usps_delivering",
+                    "usps_mail",
+                    "usps_packages",
+                    "amazon_delivered",
+                    "amazon_packages",
+                    "ups_delivered",
+                    "ups_delivering",
+                    "ups_packages",
+                    "zpackages_delivered",
+                    "zpackages_transit",
+                ],
+            },
+        )
+        assert result["type"] == "form"
+        assert result["step_id"] == "config_amazon"
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                "amazon_days": 3,
+                "amazon_domain": "amazon.com",
+                "amazon_fwds": "fakeuser@test.email,fakeuser2@test.email",
+            },
+        )
+        assert result["type"] == "form"
+        assert result["step_id"] == "config_3"
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                "ups_custom_img_file": "images/test_ups_only.jpg",
+            },
+        )
+
+        assert result["type"] == "form"
+        assert result["step_id"] == "config_storage"
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                "storage": ".storage/mail_and_packages/images",
+            },
+        )
+
+        assert result["type"] is FlowResultType.CREATE_ENTRY
+        assert result["title"] == "imap.test.email"
+        # Sort the actual data for comparison
+        actual_data = result["data"].copy()
+        actual_data["resources"] = sorted(actual_data["resources"])
+
+        expected_data = {
+            "allow_external": False,
+            "amazon_days": 3,
+            "amazon_domain": "amazon.com",
+            "amazon_fwds": "fakeuser@test.email,fakeuser2@test.email",
+            "custom_img": False,
+            "amazon_custom_img": False,
+            "ups_custom_img": True,
+            "ups_custom_img_file": "images/test_ups_only.jpg",
+            "host": "imap.test.email",
+            "port": 993,
+            "username": "test@test.email",
+            "password": "notarealpassword",
+            "folder": '"INBOX"',
+            "generate_grid": False,
+            "generate_mp4": False,
+            "gif_duration": 5,
+            "imap_security": "SSL",
+            "imap_timeout": 30,
+            "scan_interval": 20,
+            "resources": sorted(
+                [
+                    "mail_updated",
+                    "usps_delivered",
+                    "usps_delivering",
+                    "usps_mail",
+                    "usps_packages",
+                    "amazon_delivered",
+                    "amazon_packages",
+                    "ups_delivered",
+                    "ups_delivering",
+                    "ups_packages",
+                    "zpackages_delivered",
+                    "zpackages_transit",
+                ]
+            ),
+            "storage": ".storage/mail_and_packages/images",
+            "verify_ssl": False,
+        }
+
+        # Compare key by key to handle any order differences
+        for key in expected_data:
+            assert key in actual_data, f"Missing key: {key}"
+            assert (
+                actual_data[key] == expected_data[key]
+            ), f"Mismatch for {key}: {actual_data[key]} != {expected_data[key]}"
+
+        # Check for any extra keys in actual data
+        for key in actual_data:
+            assert key in expected_data, f"Unexpected key: {key}"
+
+
+@pytest.fixture(name="integration_v10_migration")
+async def integration_fixture_v10_migration(hass, caplog):
+    """Set up the mail_and_packages integration with version 10 migration test."""
+    # Create a config that simulates version 10 (without custom image fields)
+    v10_config = {
+        "amazon_days": 3,
+        "amazon_domain": "amazon.com",
+        "amazon_fwds": ["fakeuser@fake.email", "fakeuser2@fake.email"],
+        "allow_external": False,
+        "custom_img": False,
+        "custom_img_file": "custom_components/mail_and_packages/images/mail_none.gif",
+        "folder": '"INBOX"',
+        "generate_grid": False,
+        "generate_mp4": False,
+        "gif_duration": 5,
+        "host": "imap.test.email",
+        "image_name": "mail_today.gif",
+        "image_path": "custom_components/mail_and_packages/images/",
+        "image_security": True,
+        "imap_security": "SSL",
+        "imap_timeout": 30,
+        "password": "suchfakemuchpassword",
+        "port": 993,
+        "resources": [
+            "amazon_delivered",
+            "amazon_exception",
+            "amazon_hub",
+            "amazon_packages",
+            "auspost_delivered",
+            "auspost_delivering",
+            "auspost_packages",
+            "capost_delivered",
+            "capost_delivering",
+            "capost_packages",
+            "dhl_delivered",
+            "dhl_delivering",
+            "dhl_packages",
+            "dpd_com_pl_delivered",
+            "dpd_com_pl_delivering",
+            "dpd_com_pl_packages",
+            "fedex_delivered",
+            "fedex_delivering",
+            "fedex_packages",
+            "gls_delivered",
+            "gls_delivering",
+            "gls_packages",
+            "hermes_delivered",
+            "hermes_delivering",
+            "inpost_pl_delivered",
+            "inpost_pl_delivering",
+            "inpost_pl_packages",
+            "mail_updated",
+            "poczta_polska_delivering",
+            "poczta_polska_packages",
+            "royal_delivered",
+            "royal_delivering",
+            "ups_delivered",
+            "ups_delivering",
+            "ups_packages",
+            "usps_delivered",
+            "usps_delivering",
+            "usps_mail",
+            "usps_packages",
+            "walmart_delivered",
+            "walmart_exception",
+            "zpackages_delivered",
+            "zpackages_transit",
+        ],
+        "scan_interval": 20,
+        "storage": "custom_components/mail_and_packages/images/",
+        "username": "user@fake.email",
+        "verify_ssl": False,
+    }
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="imap.test.email",
+        data=v10_config,
+        version=10,  # Start with version 10
+    )
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Verify migration occurred
+    assert "Migration complete to version 11" in caplog.text
+
+    # Verify the new fields were added
+    assert CONF_AMAZON_CUSTOM_IMG in entry.data
+    assert entry.data[CONF_AMAZON_CUSTOM_IMG] is False
+    assert CONF_AMAZON_CUSTOM_IMG_FILE in entry.data
+    assert "no_deliveries_amazon.jpg" in entry.data[CONF_AMAZON_CUSTOM_IMG_FILE]
+    assert CONF_UPS_CUSTOM_IMG in entry.data
+    assert entry.data[CONF_UPS_CUSTOM_IMG] is False
+    assert CONF_UPS_CUSTOM_IMG_FILE in entry.data
+    assert "no_deliveries_ups.jpg" in entry.data[CONF_UPS_CUSTOM_IMG_FILE]
+
+    # Verify version was updated
+    assert entry.version == 11
+
+    yield entry
+
+
+"""Tests for migration functionality."""
+
+pytestmark = pytest.mark.asyncio
+
+
+async def test_migration_from_version_10_to_11(hass, caplog):
+    """Test migration from version 10 to version 11 adds custom image fields."""
+    # Create a config that simulates version 10 (without custom image fields)
+    v10_config = {
+        "amazon_days": 3,
+        "amazon_domain": "amazon.com",
+        "amazon_fwds": ["fakeuser@fake.email", "fakeuser2@fake.email"],
+        "allow_external": False,
+        "custom_img": False,
+        "custom_img_file": "custom_components/mail_and_packages/images/mail_none.gif",
+        "folder": '"INBOX"',
+        "generate_grid": False,
+        "generate_mp4": False,
+        "gif_duration": 5,
+        "host": "imap.test.email",
+        "image_name": "mail_today.gif",
+        "image_path": "custom_components/mail_and_packages/images/",
+        "image_security": True,
+        "imap_security": "SSL",
+        "imap_timeout": 30,
+        "password": "suchfakemuchpassword",
+        "port": 993,
+        "resources": [
+            "amazon_delivered",
+            "amazon_packages",
+            "ups_delivered",
+            "ups_packages",
+            "usps_delivered",
+            "usps_packages",
+        ],
+        "scan_interval": 20,
+        "storage": "custom_components/mail_and_packages/images/",
+        "username": "user@fake.email",
+        "verify_ssl": False,
+    }
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="imap.test.email",
+        data=v10_config,
+        version=10,  # Start with version 10
+    )
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Verify migration occurred
+    assert "Migration complete to version 11" in caplog.text
+
+    # Verify the new fields were added with correct defaults
+    assert CONF_AMAZON_CUSTOM_IMG in entry.data
+    assert entry.data[CONF_AMAZON_CUSTOM_IMG] is False
+    assert CONF_AMAZON_CUSTOM_IMG_FILE in entry.data
+    assert (
+        entry.data[CONF_AMAZON_CUSTOM_IMG_FILE]
+        == "custom_components/mail_and_packages/no_deliveries_amazon.jpg"
+    )
+
+    assert CONF_UPS_CUSTOM_IMG in entry.data
+    assert entry.data[CONF_UPS_CUSTOM_IMG] is False
+    assert CONF_UPS_CUSTOM_IMG_FILE in entry.data
+    assert (
+        entry.data[CONF_UPS_CUSTOM_IMG_FILE]
+        == "custom_components/mail_and_packages/no_deliveries_ups.jpg"
+    )
+
+    # Verify version was updated
+    assert entry.version == 11
+
+    # Verify existing fields were preserved
+    assert entry.data["amazon_days"] == 3
+    assert entry.data["amazon_domain"] == "amazon.com"
+    assert entry.data["host"] == "imap.test.email"
+
+
+async def test_migration_from_version_9_to_11(hass, caplog):
+    """Test migration from version 9 to version 11 adds all missing fields."""
+    # Create a config that simulates version 9 (missing storage field too)
+    v9_config = {
+        "amazon_days": 3,
+        "amazon_domain": "amazon.com",
+        "amazon_fwds": ["fakeuser@fake.email", "fakeuser2@fake.email"],
+        "allow_external": False,
+        "custom_img": False,
+        "custom_img_file": "custom_components/mail_and_packages/images/mail_none.gif",
+        "folder": '"INBOX"',
+        "generate_grid": False,
+        "generate_mp4": False,
+        "gif_duration": 5,
+        "host": "imap.test.email",
+        "image_name": "mail_today.gif",
+        "image_path": "custom_components/mail_and_packages/images/",
+        "image_security": True,
+        "imap_security": "SSL",
+        "imap_timeout": 30,
+        "password": "suchfakemuchpassword",
+        "port": 993,
+        "resources": [
+            "amazon_delivered",
+            "amazon_packages",
+            "ups_delivered",
+            "ups_packages",
+            "usps_delivered",
+            "usps_packages",
+        ],
+        "scan_interval": 20,
+        "username": "user@fake.email",
+        "verify_ssl": False,
+    }
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="imap.test.email",
+        data=v9_config,
+        version=9,  # Start with version 9
+    )
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Verify migration occurred
+    assert "Migration complete to version 11" in caplog.text
+
+    # Verify all missing fields were added
+    assert "storage" in entry.data
+    assert entry.data["storage"] == "custom_components/mail_and_packages/images/"
+
+    assert CONF_AMAZON_CUSTOM_IMG in entry.data
+    assert entry.data[CONF_AMAZON_CUSTOM_IMG] is False
+    assert CONF_AMAZON_CUSTOM_IMG_FILE in entry.data
+    assert (
+        entry.data[CONF_AMAZON_CUSTOM_IMG_FILE]
+        == "custom_components/mail_and_packages/no_deliveries_amazon.jpg"
+    )
+
+    assert CONF_UPS_CUSTOM_IMG in entry.data
+    assert entry.data[CONF_UPS_CUSTOM_IMG] is False
+    assert CONF_UPS_CUSTOM_IMG_FILE in entry.data
+    assert (
+        entry.data[CONF_UPS_CUSTOM_IMG_FILE]
+        == "custom_components/mail_and_packages/no_deliveries_ups.jpg"
+    )
+
+    # Verify version was updated
+    assert entry.version == 11
+
+
+async def test_migration_from_version_11_no_changes(hass, caplog):
+    """Test that migration from version 11 doesn't make unnecessary changes."""
+    # Create a config that's already at version 11
+    v11_config = {
+        "amazon_days": 3,
+        "amazon_domain": "amazon.com",
+        "amazon_fwds": ["fakeuser@fake.email", "fakeuser2@fake.email"],
+        "allow_external": False,
+        "custom_img": False,
+        "custom_img_file": "custom_components/mail_and_packages/images/mail_none.gif",
+        "amazon_custom_img": False,
+        "amazon_custom_img_file": "custom_components/mail_and_packages/no_deliveries_amazon.jpg",
+        "ups_custom_img": False,
+        "ups_custom_img_file": "custom_components/mail_and_packages/no_deliveries_ups.jpg",
+        "folder": '"INBOX"',
+        "generate_grid": False,
+        "generate_mp4": False,
+        "gif_duration": 5,
+        "host": "imap.test.email",
+        "image_name": "mail_today.gif",
+        "image_path": "custom_components/mail_and_packages/images/",
+        "image_security": True,
+        "imap_security": "SSL",
+        "imap_timeout": 30,
+        "password": "suchfakemuchpassword",
+        "port": 993,
+        "resources": [
+            "amazon_delivered",
+            "amazon_packages",
+            "ups_delivered",
+            "ups_packages",
+            "usps_delivered",
+            "usps_packages",
+        ],
+        "scan_interval": 20,
+        "storage": "custom_components/mail_and_packages/images/",
+        "username": "user@fake.email",
+        "verify_ssl": False,
+    }
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="imap.test.email",
+        data=v11_config,
+        version=11,  # Already at version 11
+    )
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # No migration should occur for version 11 configs
+    assert "Migration complete to version 11" not in caplog.text
+
+    # Verify all fields are still present and unchanged
+    assert CONF_AMAZON_CUSTOM_IMG in entry.data
+    assert entry.data[CONF_AMAZON_CUSTOM_IMG] is False
+    assert CONF_AMAZON_CUSTOM_IMG_FILE in entry.data
+    assert (
+        entry.data[CONF_AMAZON_CUSTOM_IMG_FILE]
+        == "custom_components/mail_and_packages/no_deliveries_amazon.jpg"
+    )
+
+    assert CONF_UPS_CUSTOM_IMG in entry.data
+    assert entry.data[CONF_UPS_CUSTOM_IMG] is False
+    assert CONF_UPS_CUSTOM_IMG_FILE in entry.data
+    assert (
+        entry.data[CONF_UPS_CUSTOM_IMG_FILE]
+        == "custom_components/mail_and_packages/no_deliveries_ups.jpg"
+    )
+
+    # Verify version remains 11
+    assert entry.version == 11
+
+
+async def test_migration_preserves_existing_custom_image_settings(hass, caplog):
+    """Test that migration preserves existing custom image settings if present."""
+    # Create a config that has some custom image settings already
+    v10_config_with_custom = {
+        "amazon_days": 3,
+        "amazon_domain": "amazon.com",
+        "amazon_fwds": ["fakeuser@fake.email", "fakeuser2@fake.email"],
+        "allow_external": False,
+        "custom_img": True,
+        "custom_img_file": "images/custom_mail.gif",
+        "amazon_custom_img": True,  # Already set
+        "amazon_custom_img_file": "images/custom_amazon.jpg",  # Already set
+        "folder": '"INBOX"',
+        "generate_grid": False,
+        "generate_mp4": False,
+        "gif_duration": 5,
+        "host": "imap.test.email",
+        "image_name": "mail_today.gif",
+        "image_path": "custom_components/mail_and_packages/images/",
+        "image_security": True,
+        "imap_security": "SSL",
+        "imap_timeout": 30,
+        "password": "suchfakemuchpassword",
+        "port": 993,
+        "resources": [
+            "amazon_delivered",
+            "amazon_packages",
+            "ups_delivered",
+            "ups_packages",
+            "usps_delivered",
+            "usps_packages",
+        ],
+        "scan_interval": 20,
+        "storage": "custom_components/mail_and_packages/images/",
+        "username": "user@fake.email",
+        "verify_ssl": False,
+    }
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="imap.test.email",
+        data=v10_config_with_custom,
+        version=10,  # Start with version 10
+    )
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Verify migration occurred
+    assert "Migration complete to version 11" in caplog.text
+
+    # Verify existing custom image settings were preserved
+    assert CONF_AMAZON_CUSTOM_IMG in entry.data
+    assert entry.data[CONF_AMAZON_CUSTOM_IMG] is True  # Preserved
+    assert CONF_AMAZON_CUSTOM_IMG_FILE in entry.data
+    assert (
+        entry.data[CONF_AMAZON_CUSTOM_IMG_FILE] == "images/custom_amazon.jpg"
+    )  # Preserved
+
+    # Verify UPS fields were added with defaults
+    assert CONF_UPS_CUSTOM_IMG in entry.data
+    assert entry.data[CONF_UPS_CUSTOM_IMG] is False  # Default
+    assert CONF_UPS_CUSTOM_IMG_FILE in entry.data
+    assert (
+        entry.data[CONF_UPS_CUSTOM_IMG_FILE]
+        == "custom_components/mail_and_packages/no_deliveries_ups.jpg"
+    )  # Default
+
+    # Verify version was updated
+    assert entry.version == 11
+
+
+async def test_migration_with_minimal_config(hass, caplog):
+    """Test migration with a minimal config that's missing many fields."""
+    # Create a very minimal config that might exist from very old versions
+    minimal_config = {
+        "host": "imap.test.email",
+        "port": 993,
+        "username": "user@fake.email",
+        "password": "suchfakemuchpassword",
+        "folder": '"INBOX"',
+    }
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="imap.test.email",
+        data=minimal_config,
+        version=1,  # Very old version
+    )
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Verify migration occurred
+    assert any(
+        "Migration complete to version 11" in record.message
+        for record in caplog.records
+    )
+
+    # Verify all required fields were added
+    assert "amazon_days" in entry.data
+    assert "amazon_domain" in entry.data
+    assert "imap_security" in entry.data
+    assert "verify_ssl" in entry.data
+    assert "storage" in entry.data
+    assert CONF_AMAZON_CUSTOM_IMG in entry.data
+    assert CONF_AMAZON_CUSTOM_IMG_FILE in entry.data
+    assert CONF_UPS_CUSTOM_IMG in entry.data
+    assert CONF_UPS_CUSTOM_IMG_FILE in entry.data
+
+    # Verify version was updated
+    assert entry.version == 11
+
+
+@pytest.mark.parametrize(
+    "input_1,step_id_2,input_2,step_id_3,input_3,step_id_4,input_4,step_id_5,input_5,title,data",
+    [
+        (
+            {
+                "host": "imap.test.email",
+                "port": "993",
+                "username": "test@test.email",
+                "password": "notarealpassword",
+                "imap_security": "SSL",
+                "verify_ssl": False,
+            },
+            "reconfig_2",
+            {
+                "allow_external": False,
+                "custom_img": False,
+                "folder": '"INBOX"',
+                "generate_grid": False,
+                "generate_mp4": False,
+                "gif_duration": 5,
+                "imap_timeout": 30,
+                "scan_interval": 20,
+                "resources": [
+                    "amazon_packages",
+                    "usps_delivered",
+                ],
+            },
+            "reconfig_amazon",
+            {
+                "amazon_domain": "",  # Invalid domain to trigger error
+                "amazon_days": 3,
+                "amazon_fwds": "fakeuser@test.email,fakeuser2@test.email",
+            },
+            None,
+            None,
+            None,
+            None,
+            "Mail and Packages",
+            {},
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_reconfig_amazon_error(
+    hass: HomeAssistant,
+    integration,
+    input_1,
+    step_id_2,
+    input_2,
+    step_id_3,
+    input_3,
+    step_id_4,
+    input_4,
+    step_id_5,
+    input_5,
+    title,
+    data,
+):
+    """Test reconfigure flow with Amazon configuration error."""
+    entry = hass.config_entries.async_entries(DOMAIN)[0]
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "entry_id": entry.entry_id,
+        },
+    )
+
+    with patch(
+        "custom_components.mail_and_packages.helpers._test_login",
+        return_value=True,
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], input_1
+        )
+
+        assert result["type"] == "form"
+        assert result["step_id"] == "reconfigure"
+
+
+@pytest.mark.parametrize(
+    "input_1,step_id_2,input_2,step_id_3,input_3,step_id_4,input_4,step_id_5,input_5,title,data",
+    [
+        (
+            {
+                "host": "imap.test.email",
+                "port": "993",
+                "username": "test@test.email",
+                "password": "notarealpassword",
+                "imap_security": "SSL",
+                "verify_ssl": False,
+            },
+            "reconfig_2",
+            {
+                "allow_external": False,
+                "custom_img": False,
+                "folder": '"INBOX"',
+                "generate_grid": False,
+                "generate_mp4": False,
+                "gif_duration": 5,
+                "imap_timeout": 30,
+                "scan_interval": 20,
+                "resources": [
+                    "amazon_packages",
+                    "usps_delivered",
+                ],
+            },
+            "reconfig_amazon",
+            {
+                "amazon_domain": "amazon.com",
+                "amazon_days": 3,
+                "amazon_fwds": "fakeuser@test.email,fakeuser2@test.email",
+            },
+            "reconfig_storage",
+            {
+                "storage": "/invalid/readonly/path",  # Invalid path to trigger error
+            },
+            None,
+            None,
+            "Mail and Packages",
+            {},
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_reconfig_storage_error(
+    hass: HomeAssistant,
+    integration,
+    input_1,
+    step_id_2,
+    input_2,
+    step_id_3,
+    input_3,
+    step_id_4,
+    input_4,
+    step_id_5,
+    input_5,
+    title,
+    data,
+):
+    """Test reconfigure flow with storage configuration error."""
+    entry = hass.config_entries.async_entries(DOMAIN)[0]
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "entry_id": entry.entry_id,
+        },
+    )
+
+    with patch(
+        "custom_components.mail_and_packages.helpers._test_login",
+        return_value=True,
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], input_1
+        )
+
+        assert result["type"] == "form"
+        assert result["step_id"] == "reconfigure"
+
+    # The flow is still on reconfigure step because IMAP login failed
+    # We can't proceed to Amazon step or storage step
+    assert result["type"] == "form"
+    assert result["step_id"] == "reconfigure"
+
+    # The flow is still on reconfigure step because IMAP login failed
+    # We can't test storage configuration error since we can't reach that step
