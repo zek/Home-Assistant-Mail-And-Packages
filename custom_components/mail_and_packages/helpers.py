@@ -39,6 +39,7 @@ from .const import (
     AMAZON_DELIEVERED_BY_OTHERS_SEARCH_TEXT,
     AMAZON_DELIVERED,
     AMAZON_DELIVERED_SUBJECT,
+    AMAZON_DOMAINS,
     AMAZON_EXCEPTION,
     AMAZON_EXCEPTION_ORDER,
     AMAZON_EXCEPTION_SUBJECT,
@@ -56,6 +57,7 @@ from .const import (
     AMAZON_OTP_SUBJECT,
     AMAZON_PACKAGES,
     AMAZON_PATTERN,
+    AMAZON_SHIPMENT_SUBJECT,
     AMAZON_SHIPMENT_TRACKING,
     AMAZON_TIME_PATTERN,
     AMAZON_TIME_PATTERN_END,
@@ -520,7 +522,7 @@ def fetch(
     amazon_fwds = cv.ensure_list_csv(config.get(CONF_AMAZON_FWDS))
     image_name = data[ATTR_IMAGE_NAME]
     amazon_image_name = data[ATTR_AMAZON_IMAGE]
-    amazon_days = config.get(CONF_AMAZON_DAYS)
+    amazon_days = config.get(CONF_AMAZON_DAYS, DEFAULT_AMAZON_DAYS)
 
     # Conditional variables
     nomail = (
@@ -728,14 +730,11 @@ def build_search(address: list, date: str, subject: str = None) -> tuple:
     prefix_list = None
     email_list = None
 
-    if isinstance(address, list):
-        if len(address) == 1:
-            email_list = address[0]
-        else:
-            email_list = '" FROM "'.join(address)
-            prefix_list = " ".join(["OR"] * (len(address) - 1))
+    if len(address) == 1:
+        email_list = address[0]
     else:
-        email_list = address
+        email_list = '" FROM "'.join(address)
+        prefix_list = " ".join(["OR"] * (len(address) - 1))
 
     _LOGGER.debug("DEBUG subject: %s", subject)
 
@@ -801,9 +800,14 @@ def email_search(
 
 
 def email_fetch(
-    account: Type[imaplib.IMAP4_SSL], num: int, parts: str = "(RFC822)"
+    account: Type[imaplib.IMAP4_SSL], num, parts: str = "(RFC822)"
 ) -> tuple:
     """Download specified email for parsing.
+
+    Args:
+        account: IMAP account instance
+        num: Email message ID (int, str, or bytes)
+        parts: Message parts to fetch
 
     Returns tuple
     """
@@ -811,8 +815,14 @@ def email_fetch(
     if account.host == "imap.mail.me.com":
         parts = "BODY[]"
 
+    # Convert num to string for imaplib
+    if isinstance(num, bytes):
+        num_str = num.decode()
+    else:
+        num_str = str(num)
+
     try:
-        value = account.fetch(num, parts)
+        value = account.fetch(num_str, parts)
     except Exception as err:
         _LOGGER.error("Error fetching emails: %s", str(err))
         value = "BAD", err.args[0]
@@ -1699,6 +1709,7 @@ def amazon_search(
                 email_count,
             )
             _LOGGER.debug("Email IDs found: %s", data[0])
+
             get_amazon_image(
                 data[0],
                 account,
@@ -1984,7 +1995,8 @@ async def download_img(
 def _process_amazon_forwards(email_list: str | list | None) -> list:
     """Process amazon forward emails.
 
-    Returns list of email addresses
+    Returns list of email addresses that are actually Amazon domains.
+    This filters out non-Amazon forwarded addresses to prevent false matches.
     """
     result = []
     if email_list is not None:
@@ -1992,7 +2004,14 @@ def _process_amazon_forwards(email_list: str | list | None) -> list:
             email_list = email_list.split()
         for fwd in email_list:
             if fwd and fwd != '""' and fwd not in result:
-                result.append(fwd)
+                # Only include forwarded addresses if they are actual Amazon domains
+                if any(
+                    amazon_domain in fwd.lower() for amazon_domain in AMAZON_DOMAINS
+                ):
+                    result.append(fwd)
+                    _LOGGER.debug("Including Amazon forwarded address: %s", fwd)
+                else:
+                    _LOGGER.debug("Filtering out non-Amazon forwarded address: %s", fwd)
 
     _LOGGER.debug("Processed forwards: %s", result)
     return result
@@ -2236,16 +2255,53 @@ def get_items(
     past_date = datetime.date.today() - datetime.timedelta(days=days)
     tfmt = past_date.strftime("%d-%b-%Y")
     deliveries_today = []
-    order_number = []
     amazon_delivered = []
+
+    # Track packages that are arriving today
+    packages_arriving_today = {}  # {order_id: count}
+    delivered_packages = {}  # {order_id: count}
+    all_shipped_orders = set()  # Track all shipped order numbers
 
     address_list = amazon_email_addresses(fwds, the_domain)
     _LOGGER.debug("Amazon email list: %s", str(address_list))
 
     (server_response, sdata) = email_search(account, address_list, tfmt)
 
+    # Search for Amazon emails with relevant subjects to avoid false matches
+    amazon_subjects = (
+        AMAZON_DELIVERED_SUBJECT + AMAZON_SHIPMENT_SUBJECT + AMAZON_ORDERED_SUBJECT
+    )
+    all_emails = []
+
+    for subject in amazon_subjects:
+        _LOGGER.debug("Searching for Amazon emails with subject: %s", subject)
+        (server_response, sdata) = email_search(account, address_list, tfmt, subject)
+        if server_response == "OK" and sdata[0] is not None:
+            email_ids = sdata[0].split()
+            _LOGGER.debug("Found %s emails for subject '%s'", len(email_ids), subject)
+            all_emails.extend(email_ids)
+
+    # Remove duplicates while preserving order
+    unique_emails = []
+    for email_id in all_emails:
+        if email_id not in unique_emails:
+            unique_emails.append(email_id)
+
+    _LOGGER.debug("Total unique Amazon emails found: %s", len(unique_emails))
+
+    # Ensure all email IDs are byte strings for proper joining
+    unique_emails_bytes = []
+    for email_id in unique_emails:
+        if isinstance(email_id, bytes):
+            unique_emails_bytes.append(email_id)
+        else:
+            unique_emails_bytes.append(str(email_id).encode("utf-8"))
+
+    # Simulate the original sdata format
+    sdata = ("OK", [b" ".join(unique_emails_bytes)])
+
     if server_response == "OK":
-        mail_ids = sdata[0]
+        mail_ids = sdata[1][0]
         id_list = mail_ids.split()
         _LOGGER.debug("Amazon emails found: %s", str(len(id_list)))
         for i in id_list:
@@ -2258,9 +2314,25 @@ def get_items(
                     email_date_str = msg.get("Date")
                     email_date = None
                     if email_date_str:
-                        email_date = email.utils.parsedate_to_datetime(
-                            email_date_str
-                        ).date()
+                        try:
+                            email_date = email.utils.parsedate_to_datetime(
+                                email_date_str
+                            ).date()
+                        except (ValueError, TypeError) as err:
+                            _LOGGER.debug(
+                                "Failed to parse email date '%s': %s",
+                                email_date_str,
+                                err,
+                            )
+                            # Try using dateparser as fallback
+                            parsed_date = dateparser.parse(email_date_str)
+                            if parsed_date:
+                                email_date = parsed_date.date()
+                            else:
+                                _LOGGER.debug(
+                                    "dateparser also failed to parse email date: %s",
+                                    email_date_str,
+                                )
                     _LOGGER.debug("Email from date: %s", str(email_date))
 
                     today_date = datetime.date.today()
@@ -2303,35 +2375,60 @@ def get_items(
                     # Order number pattern
                     pattern = re.compile(r"[0-9]{3}-[0-9]{7}-[0-9]{7}")
 
-                    # Skip delivered emails and record order numbers
+                    # Count delivered packages per order number
                     if any(
                         subj.lower() in email_subject.lower()
                         for subj in AMAZON_DELIVERED_SUBJECT
                     ):
+                        # First try to find order number in subject
                         delivered_orders = pattern.findall(email_subject)
+
+                        # If not found in subject, try to find in email body
+                        if not delivered_orders:
+                            try:
+                                if msg.is_multipart():
+                                    email_msg = quopri.decodestring(
+                                        str(msg.get_payload(0))
+                                    )
+                                else:
+                                    email_msg = quopri.decodestring(
+                                        str(msg.get_payload())
+                                    )
+                                email_msg = email_msg.decode("utf-8", "ignore")
+                                delivered_orders = pattern.findall(email_msg)
+                                _LOGGER.debug(
+                                    "Found order numbers in delivered email body: %s",
+                                    delivered_orders,
+                                )
+                            except Exception as err:
+                                _LOGGER.debug(
+                                    "Error parsing delivered email body: %s", str(err)
+                                )
+
                         if delivered_orders:
                             for o in delivered_orders:
+                                # Count delivered packages per order
+                                delivered_packages[o] = delivered_packages.get(o, 0) + 1
+                                _LOGGER.debug(
+                                    "Delivered package found for order %s (total delivered: %s)",
+                                    o,
+                                    delivered_packages[o],
+                                )
+                                # Keep backward compatibility
                                 if o not in amazon_delivered:
                                     amazon_delivered.append(o)
-                                    _LOGGER.debug(
-                                        "Delivered order found and stored: %s", o
-                                    )
                         else:
                             _LOGGER.debug(
-                                "Delivered email found, but no order number matched."
+                                "Delivered email found, but no order number found."
                             )
                         continue  # Skip processing this email
 
-                    # Extract order number from subject
-                    if (
-                        (found := pattern.findall(email_subject))
-                        and len(found) > 0
-                        and found[0] not in order_number
-                    ):
-                        order_number.append(found[0])
-                        _LOGGER.debug(
-                            "Amazon order number found and appended: %s", str(found[0])
-                        )
+                    # Extract order number from subject (for shipped emails)
+                    order_id = None
+                    if (found := pattern.findall(email_subject)) and len(found) > 0:
+                        order_id = found[0]
+                        all_shipped_orders.add(order_id)  # Track all shipped orders
+                        _LOGGER.debug("Found order ID in subject: %s", order_id)
 
                     # Try decoding email body
                     try:
@@ -2346,17 +2443,15 @@ def get_items(
 
                     email_msg = email_msg.decode("utf-8", "ignore")
 
-                    # Check message body for order number again
+                    # Check message body for order number again (for additional order detection)
                     if (
-                        (found := pattern.findall(email_msg))
+                        not order_id
+                        and (found := pattern.findall(email_msg))
                         and len(found) > 0
-                        and found[0] not in order_number
                     ):
-                        order_number.append(found[0])
-                        _LOGGER.debug(
-                            "Amazon order number found and appended again: %s",
-                            str(found[0]),
-                        )
+                        order_id = found[0]
+                        all_shipped_orders.add(order_id)  # Track all shipped orders
+                        _LOGGER.debug("Found order ID in body: %s", order_id)
 
                     # Check for arrival date
                     for search in AMAZON_TIME_PATTERN:
@@ -2430,12 +2525,25 @@ def get_items(
                                     arrive_date_clean,
                                 )
                                 continue
-                            parsed_date_only = dateobj.date()
+                            if hasattr(dateobj, "date"):
+                                parsed_date_only = dateobj.date()
+                            else:
+                                parsed_date_only = dateobj
 
                         if parsed_date_only == today_date:
-                            deliveries_today.append(
-                                found[0] if found else "Amazon Order"
-                            )
+                            # Count packages arriving today
+                            if order_id:
+                                packages_arriving_today[order_id] = (
+                                    packages_arriving_today.get(order_id, 0) + 1
+                                )
+                                _LOGGER.debug(
+                                    "Package arriving today for order %s (total: %s)",
+                                    order_id,
+                                    packages_arriving_today[order_id],
+                                )
+                            else:
+                                # Fallback for emails without order number
+                                deliveries_today.append("Amazon Order")
                         else:
                             _LOGGER.debug(
                                 "Delivery date not today: %s", parsed_date_only
@@ -2446,18 +2554,40 @@ def get_items(
         item for item in deliveries_today if item not in amazon_delivered
     ]
 
+    # Calculate packages arriving today minus delivered packages
+    final_count = 0
+    for order_id, arriving_count in packages_arriving_today.items():
+        delivered_count = delivered_packages.get(order_id, 0)
+        in_transit_count = max(0, arriving_count - delivered_count)
+        final_count += in_transit_count
+        _LOGGER.debug(
+            "Order %s: %s arriving today, %s delivered, %s in transit",
+            order_id,
+            arriving_count,
+            delivered_count,
+            in_transit_count,
+        )
+
+    # Add fallback for emails without order numbers
+    final_count += len(deliveries_today)
+
+    _LOGGER.debug(
+        "Amazon packages arriving today: %s", str(sum(packages_arriving_today.values()))
+    )
+    _LOGGER.debug(
+        "Amazon packages delivered: %s", str(sum(delivered_packages.values()))
+    )
+    _LOGGER.debug("Amazon final count: %s", str(final_count))
+
     # Return delivery count or list of order numbers
     value = None
     if param == "count":
-        _LOGGER.debug(
-            "Amazon Delivery Count (today, not delivered): %s",
-            str(len(deliveries_today)),
-        )
-        _LOGGER.debug("Amazon Order Count: %s", str(len(order_number)))
-        value = min(len(deliveries_today), len(order_number))
+        value = final_count
     else:
-        _LOGGER.debug("Amazon order: %s", str(order_number))
-        value = order_number
+        # Return list of all shipped order numbers
+        order_numbers = list(all_shipped_orders)
+        _LOGGER.debug("Amazon order: %s", str(order_numbers))
+        value = order_numbers
 
     _LOGGER.debug("Amazon value: %s", str(value))
     return value
