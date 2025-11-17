@@ -73,6 +73,7 @@ from tests.const import (
 
 MAIL_IMAGE_URL_ENTITY = "sensor.mail_image_url"
 MAIL_IMAGE_SYSTEM_PATH = "sensor.mail_image_system_path"
+MAIL_IMAGE_GRID_IMAGE_PATH = "sensor.mail_grid_image_path"
 
 
 @pytest.mark.asyncio
@@ -480,6 +481,30 @@ async def test_informed_delivery_emails(
     with patch("builtins.open", m_open, create=True):
         result = get_mails(
             mock_imap_usps_informed_digest, "./", "5", "mail_today.gif", False
+        )
+        assert result == 3
+        assert "USPSInformedDelivery@usps.gov" in caplog.text
+        assert "USPSInformeddelivery@informeddelivery.usps.com" in caplog.text
+        assert "USPSInformeddelivery@email.informeddelivery.usps.com" in caplog.text
+        assert "USPS Informed Delivery" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_informed_delivery_forwarded_emails(
+    mock_imap_informed_delivery_forwarded_email,
+    mock_osremove,
+    mock_osmakedir,
+    mock_listdir,
+    mock_os_path_splitext,
+    mock_image,
+    mock_resizeimage,
+    mock_copyfile,
+    caplog,
+):
+    m_open = mock_open()
+    with patch("builtins.open", m_open, create=True):
+        result = get_mails(
+            mock_imap_informed_delivery_forwarded_email, "./", "5", "mail_today.gif", False, forwarded_emails=["forwarduser@fake.email"]
         )
         assert result == 3
         assert "USPSInformedDelivery@usps.gov" in caplog.text
