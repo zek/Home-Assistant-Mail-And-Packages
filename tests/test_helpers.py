@@ -3,6 +3,7 @@
 import datetime
 import os
 import re
+import subprocess
 import tempfile
 from datetime import date, datetime
 from unittest import mock
@@ -504,7 +505,12 @@ async def test_informed_delivery_forwarded_emails(
     m_open = mock_open()
     with patch("builtins.open", m_open, create=True):
         result = get_mails(
-            mock_imap_informed_delivery_forwarded_email, "./", "5", "mail_today.gif", False, forwarded_emails=["forwarduser@fake.email"]
+            mock_imap_informed_delivery_forwarded_email,
+            "./",
+            "5",
+            "mail_today.gif",
+            False,
+            forwarded_emails=["forwarduser@fake.email"],
         )
         assert result == 3
         assert "USPSInformedDelivery@usps.gov" in caplog.text
@@ -769,9 +775,7 @@ Content-ID: <deliveryPhoto>
     # Test image extraction
     result = get_ups_image(
         test_email,
-        None,  # account not needed for this test
         str(tmp_path) + "/",
-        None,  # hass not needed for this test
         "test_ups_image.jpg",
     )
 
@@ -813,9 +817,7 @@ Content-Type: text/html; charset=UTF-8
     # Test image extraction
     result = get_ups_image(
         test_email,
-        None,  # account not needed for this test
         str(tmp_path) + "/",
-        None,  # hass not needed for this test
         "test_ups_image.jpg",
     )
 
@@ -852,9 +854,7 @@ Content-Type: text/html; charset=UTF-8
     # Test image extraction
     result = get_ups_image(
         test_email,
-        None,  # account not needed for this test
         str(tmp_path),
-        hass,
         "test_ups_image.jpg",
     )
 
@@ -874,7 +874,7 @@ async def test_ups_search_no_deliveries(
     with patch("os.path.isdir", return_value=True), patch(
         "os.makedirs", return_value=True
     ):
-        result = ups_search(mock_imap_no_email, "./", hass, "test_ups.jpg")
+        result = ups_search(mock_imap_no_email, "./", "test_ups.jpg")
         assert result == 0
         assert "No UPS deliveries found." in caplog.text
         # Should have copied the default no delivery image
@@ -882,7 +882,7 @@ async def test_ups_search_no_deliveries(
 
 
 @pytest.mark.asyncio
-async def test_ups_search_with_photo(hass, tmp_path):
+async def test_ups_search_with_photo(tmp_path):
     """Test UPS search with delivery photo extraction."""
     # Create a mock IMAP account that returns our test email
     mock_account = mock.Mock()
@@ -924,9 +924,7 @@ Content-ID: <deliveryPhoto>
     with patch(
         "os.path.isdir", side_effect=lambda path: str(path) == str(ups_path)
     ), patch("os.makedirs", return_value=True), patch("os.listdir", return_value=[]):
-        result = ups_search(
-            mock_account, str(tmp_path) + "/", hass, "test_ups_image.jpg"
-        )
+        result = ups_search(mock_account, str(tmp_path) + "/", "test_ups_image.jpg")
 
     # Verify that one delivery was found and processed
     assert result == 1
@@ -1247,26 +1245,59 @@ async def test_amazon_shipped_order_exception(hass, mock_imap_amazon_shipped, ca
 
 
 @pytest.mark.asyncio
-async def test_generate_mp4(
-    mock_osremove, mock_os_path_join, mock_subprocess_call, mock_os_path_split
-):
-    with patch("custom_components.mail_and_packages.helpers.cleanup_images"):
+async def test_generate_mp4(mock_osremove):
+    """Test generating mp4."""
+    # Patch subprocess.run since the code now uses it instead of call
+    with patch("subprocess.run") as mock_run, patch(
+        "custom_components.mail_and_packages.helpers.cleanup_images"
+    ):
+
+        # Call the function
         _generate_mp4("./", "testfile.gif")
 
-        mock_os_path_join.assert_called_with("./", "testfile.mp4")
-        # mock_osremove.assert_called_with("./", "testfile.mp4")
-        mock_subprocess_call.assert_called_with(
+        # Construct expected paths
+        expected_input = os.path.join("./", "testfile.gif")
+        expected_output = os.path.join("./", "testfile.mp4")
+
+        # Assert called with correct arguments
+        # Note: The optimization added '-y' and 'check=True'
+        mock_run.assert_called_with(
             [
                 "ffmpeg",
+                "-y",
                 "-i",
-                "./testfile.mp4",
+                expected_input,
                 "-pix_fmt",
                 "yuv420p",
-                "./testfile.mp4",
+                expected_output,
             ],
-            stdout=-3,
-            stderr=-3,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=True,
         )
+
+
+# @pytest.mark.asyncio
+# async def test_generate_mp4(
+#     mock_osremove, mock_os_path_join, mock_subprocess_call, mock_os_path_split
+# ):
+#     with patch("custom_components.mail_and_packages.helpers.cleanup_images"):
+#         _generate_mp4("./", "testfile.gif")
+
+#         mock_os_path_join.assert_called_with("./", "testfile.mp4")
+#         # mock_osremove.assert_called_with("./", "testfile.mp4")
+#         mock_subprocess_call.assert_called_with(
+#             [
+#                 "ffmpeg",
+#                 "-i",
+#                 "./testfile.mp4",
+#                 "-pix_fmt",
+#                 "yuv420p",
+#                 "./testfile.mp4",
+#             ],
+#             stdout=-3,
+#             stderr=-3,
+#         )
 
 
 @pytest.mark.asyncio
@@ -1999,82 +2030,67 @@ def migrate_config(config: dict, version: int) -> dict:
     return migrated_config
 
 
-async def test_walmart_delivered_email_processing():
+@pytest.mark.asyncio
+@patch("custom_components.mail_and_packages.helpers.copyfile")
+@patch("custom_components.mail_and_packages.helpers.os.makedirs")
+@patch("custom_components.mail_and_packages.helpers.os.listdir")
+@patch("custom_components.mail_and_packages.helpers.cleanup_images")
+@patch("custom_components.mail_and_packages.helpers.os.path.isdir")
+@patch("custom_components.mail_and_packages.helpers.get_walmart_image")
+@patch("custom_components.mail_and_packages.helpers.email_fetch")
+@patch("custom_components.mail_and_packages.helpers.email_search")
+async def test_walmart_delivered_email_processing(
+    mock_email_search,
+    mock_email_fetch,
+    mock_get_walmart_image,
+    mock_isdir,
+    mock_cleanup,
+    mock_listdir,
+    mock_makedirs,
+    mock_copyfile,
+):
     """Test that Walmart delivered emails are correctly processed and counted."""
-    # Mock the dependencies
+    # Mock dependencies
     mock_account = MagicMock()
-    mock_hass = MagicMock()
-    mock_config = MagicMock()
 
     # Test parameters
     image_path = "/test/images/"
     walmart_image_name = "test_walmart.jpg"
     coordinator_data = {}
 
-    # Mock email_search to return the test email
-    with patch(
-        "custom_components.mail_and_packages.helpers.email_search"
-    ) as mock_email_search:
-        mock_email_search.return_value = ("OK", [b"1"])  # One email found
+    # Setup Mocks
+    # email_search returns ID "1"
+    mock_email_search.return_value = ("OK", [b"1"])
 
-        # Mock email_fetch to return our test email content
-        with patch(
-            "custom_components.mail_and_packages.helpers.email_fetch"
-        ) as mock_email_fetch:
-            # Read the actual test email content
-            with open(
-                "tests/test_emails/walmart_delivered.eml", "r", encoding="utf-8"
-            ) as f:
-                test_email_content = f.read()
+    # email_fetch returns dummy content (content is irrelevant as get_walmart_image is mocked)
+    mock_email_fetch.return_value = ("OK", [(None, b"Subject: Delivery\n\nDelivered")])
 
-            mock_email_fetch.return_value = (
-                "OK",
-                [(None, test_email_content.encode())],
-            )
+    # Simulate a successful image extraction
+    mock_get_walmart_image.return_value = True
 
-            # Mock get_walmart_image to return True (photo found)
-            with patch(
-                "custom_components.mail_and_packages.helpers.get_walmart_image"
-            ) as mock_get_image:
-                mock_get_image.return_value = True
+    # Simulate file system state
+    mock_isdir.return_value = True
+    mock_listdir.return_value = ["test_walmart.jpg"]
 
-                # Mock file operations
-                with patch(
-                    "custom_components.mail_and_packages.helpers.os.path.isdir"
-                ) as mock_isdir:
-                    mock_isdir.return_value = True
-                    with patch(
-                        "custom_components.mail_and_packages.helpers.cleanup_images"
-                    ):
-                        with patch(
-                            "custom_components.mail_and_packages.helpers.os.listdir"
-                        ) as mock_listdir:
-                            mock_listdir.return_value = ["test_walmart.jpg"]
-                            with patch(
-                                "custom_components.mail_and_packages.helpers.os.makedirs"
-                            ) as mock_makedirs:
-                                with patch(
-                                    "custom_components.mail_and_packages.helpers.copyfile"
-                                ) as mock_copyfile:
-                                    # Call walmart_search
-                                    result = walmart_search(
-                                        mock_account,
-                                        image_path,
-                                        mock_hass,
-                                        walmart_image_name,
-                                        coordinator_data,
-                                    )
+    # Execute
+    result = walmart_search(
+        mock_account,
+        image_path,
+        walmart_image_name,
+        coordinator_data,
+    )
 
-    # Should return 1 since one email was found
+    # Assertions
+    # Should return 1 since one email ID was found
     assert result == 1, f"Expected 1 Walmart delivery, got {result}"
 
-    # Verify that coordinator data was updated with the image filename
-    assert (
-        ATTR_WALMART_IMAGE in coordinator_data
-    ), "Walmart image should be set in coordinator data"
-    assert (
-        coordinator_data[ATTR_WALMART_IMAGE] == "test_walmart.jpg"
-    ), "Walmart image filename should be set correctly"
+    # Verify that coordinator data was updated with the image filename found in listdir
+    assert ATTR_WALMART_IMAGE in coordinator_data
+    assert coordinator_data[ATTR_WALMART_IMAGE] == "test_walmart.jpg"
+
+    # Verify key interactions
+    mock_email_search.assert_called()
+    mock_get_walmart_image.assert_called()
 
 
 async def test_walmart_delivering_email_processing():
@@ -2123,10 +2139,6 @@ async def test_walmart_delivering_email_processing():
 
 async def test_walmart_image_extraction():
     """Test that Walmart delivery photos are correctly extracted from emails."""
-    # Mock the dependencies
-    mock_account = MagicMock()
-    mock_hass = MagicMock()
-
     # Test parameters
     image_path = "/test/images/"
     image_name = "test_walmart.jpg"
@@ -2142,9 +2154,7 @@ async def test_walmart_image_extraction():
         mock_isdir.return_value = True
         with patch("builtins.open", mock.mock_open()) as mock_file:
             # Call get_walmart_image
-            result = get_walmart_image(
-                test_email_content, mock_account, image_path, mock_hass, image_name
-            )
+            result = get_walmart_image(test_email_content, image_path, image_name)
 
     # Should return True since the email contains a delivery photo
     assert (
@@ -2218,8 +2228,6 @@ async def test_walmart_no_deliveries_handling():
     """Test that Walmart handles no deliveries correctly."""
     # Mock the dependencies
     mock_account = MagicMock()
-    mock_hass = MagicMock()
-    mock_config = MagicMock()
 
     # Test parameters
     image_path = "/test/images/"
@@ -2244,7 +2252,6 @@ async def test_walmart_no_deliveries_handling():
                 result = walmart_search(
                     mock_account,
                     image_path,
-                    mock_hass,
                     walmart_image_name,
                     coordinator_data,
                 )
@@ -2345,9 +2352,7 @@ async def test_get_walmart_image_with_real_email():
         # Test with real Walmart email (this email doesn't contain delivery proof images)
         result = get_walmart_image(
             test_email,
-            MagicMock(),  # account
             temp_dir + "/",
-            MagicMock(),  # hass
             "test_delivery.jpg",
         )
 
@@ -2386,9 +2391,7 @@ Content-Type: text/html; charset=utf-8
         # Test with base64 encoded image
         result = get_walmart_image(
             test_email,
-            MagicMock(),  # account
             temp_dir + "/",
-            MagicMock(),  # hass
             "test_delivery.jpg",
         )
 
@@ -2426,9 +2429,7 @@ iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAA
         # Test with PNG attachment
         result = get_walmart_image(
             test_email,
-            MagicMock(),  # account
             temp_dir + "/",
-            MagicMock(),  # hass
             "test_delivery.jpg",
         )
 
@@ -2455,9 +2456,7 @@ Your package has been delivered!
         # Test with no image
         result = get_walmart_image(
             test_email,
-            MagicMock(),  # account
             temp_dir + "/",
-            MagicMock(),  # hass
             "test_delivery.jpg",
         )
 
@@ -2501,9 +2500,7 @@ iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAA
         with patch("builtins.open", side_effect=IOError("Permission denied")):
             result = get_walmart_image(
                 test_email,
-                MagicMock(),  # account
                 temp_dir + "/",
-                MagicMock(),  # hass
                 "test_delivery.jpg",
             )
 
@@ -2550,9 +2547,7 @@ async def test_walmart_delivered_email_with_real_data():
         # Test with real Walmart delivered email
         result = get_walmart_image(
             test_email,
-            MagicMock(),  # account
             temp_dir + "/",
-            MagicMock(),  # hass
             "test_delivery.jpg",
         )
 
@@ -2659,15 +2654,12 @@ async def test_walmart_search_error_handling():
     # Mock account and dependencies
     mock_account = MagicMock()
     mock_account.search.return_value = ("OK", [b""])  # Return proper tuple format
-    mock_hass = MagicMock()
-    mock_config = MagicMock()
 
     with tempfile.TemporaryDirectory() as temp_dir:
         # Test with invalid image path (should handle gracefully)
         result = walmart_search(
             mock_account,
             "/invalid/path/",  # Invalid path
-            mock_hass,
             "test_image.jpg",
             {},
         )
@@ -2681,15 +2673,12 @@ async def test_ups_search_error_handling():
     # Mock account and dependencies
     mock_account = MagicMock()
     mock_account.search.return_value = ("OK", [b""])  # Return proper tuple format
-    mock_hass = MagicMock()
-    mock_config = MagicMock()
 
     with tempfile.TemporaryDirectory() as temp_dir:
         # Test with invalid image path (should handle gracefully)
         result = ups_search(
             mock_account,
             "/invalid/path/",  # Invalid path
-            mock_hass,
             "test_image.jpg",
             {},
         )
@@ -3228,3 +3217,136 @@ Thank you for your purchase!
 
     # Should return 0 because no order number was found to count
     assert result == 0, f"Expected 0 (no order number found), got {result}"
+
+
+def test_extract_delivery_image_png(tmp_path):
+    """Test extracting a PNG delivery image (e.g. Walmart style)."""
+    from custom_components.mail_and_packages.helpers import _extract_delivery_image
+
+    # Create dummy PNG data (base64)
+    png_data = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+
+    # Note: The HTML must contain the cid_keyword ("deliveryProofLabel") for the function to proceed
+    email_body = f"""MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="boundary"
+
+--boundary
+Content-Type: text/html; charset=utf-8
+
+<html>
+  <div class="deliveryProofLabel">
+    <img src="data:image/png;base64,{png_data}" />
+  </div>
+</html>
+--boundary--
+"""
+
+    # Create target directory
+    image_path = str(tmp_path) + "/"
+    os.makedirs(os.path.join(image_path, "walmart"), exist_ok=True)
+
+    # Run extraction
+    result = _extract_delivery_image(
+        email_body, image_path, "test.png", "walmart", "deliveryProofLabel", "image/png"
+    )
+
+    assert result is True
+    assert os.path.exists(os.path.join(image_path, "walmart", "test.png"))
+
+
+def test_extract_delivery_image_bad_base64(tmp_path):
+    """Test extraction with invalid base64 data."""
+    from custom_components.mail_and_packages.helpers import _extract_delivery_image
+
+    # Invalid base64 string (contains spaces or invalid chars not padding)
+    bad_data = "This is not valid base64 data!!!"
+
+    email_body = f"""MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<html>
+  <div class="deliveryProofLabel">
+    <img src="data:image/png;base64,{bad_data}" />
+  </div>
+</html>
+"""
+
+    image_path = str(tmp_path) + "/"
+
+    # Should handle the exception gracefully and return False
+    result = _extract_delivery_image(
+        email_body, image_path, "test.png", "walmart", "deliveryProofLabel", "image/png"
+    )
+
+    assert result is False
+
+
+def test_extract_delivery_image_save_error(tmp_path):
+    """Test error handling when saving the image fails."""
+    from unittest.mock import mock_open, patch
+
+    from custom_components.mail_and_packages.helpers import _extract_delivery_image
+
+    png_data = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+
+    email_body = f"""MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<html>
+  <div class="deliveryProofLabel">
+    <img src="data:image/png;base64,{png_data}" />
+  </div>
+</html>
+"""
+
+    # Patch builtins.open to raise an OSError
+    with patch("builtins.open", side_effect=OSError("Permission denied")):
+        result = _extract_delivery_image(
+            email_body,
+            str(tmp_path) + "/",
+            "test.png",
+            "walmart",
+            "deliveryProofLabel",
+            "image/png",
+        )
+
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_find_text_decode_error():
+    """Test find_text handles decoding errors gracefully."""
+    from unittest.mock import MagicMock
+
+    from custom_components.mail_and_packages.helpers import find_text
+
+    # Mock account
+    mock_account = MagicMock()
+    mock_account.search.return_value = ("OK", [b"1"])
+
+    # Mock email message parts
+    mock_msg = MagicMock()
+
+    # Part 1: Valid text
+    part1 = MagicMock()
+    part1.get_content_type.return_value = "text/plain"
+    part1.get_payload.return_value = b"Hello World"
+
+    # Part 2: Payload is None (will cause AttributeError on decode)
+    part2 = MagicMock()
+    part2.get_content_type.return_value = "text/plain"
+    part2.get_payload.return_value = None
+
+    mock_msg.walk.return_value = [part1, part2]
+
+    # Mock email_fetch to return our constructed message
+    with patch(
+        "custom_components.mail_and_packages.helpers.email_fetch"
+    ) as mock_fetch, patch("email.message_from_bytes", return_value=mock_msg):
+
+        mock_fetch.return_value = ("OK", [(b"1", b"raw_data")])
+
+        # Search for "World" which is in part1. Part2 should crash but be skipped.
+        count = find_text(("OK", [b"1"]), mock_account, ["World"], False)
+
+        assert count == 1
