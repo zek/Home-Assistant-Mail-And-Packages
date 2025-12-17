@@ -24,6 +24,7 @@ from .const import (
     CONF_CUSTOM_IMG_FILE,
     CONF_DURATION,
     CONF_FOLDER,
+    CONF_FORWARDED_MODE,
     CONF_GENERATE_MP4,
     CONF_IMAGE_SECURITY,
     CONF_IMAP_TIMEOUT,
@@ -35,6 +36,7 @@ from .const import (
     DEFAULT_CUSTOM_IMG,
     DEFAULT_CUSTOM_IMG_FILE,
     DEFAULT_FOLDER,
+    DEFAULT_FORWARDED_MODE,
     DEFAULT_GIF_DURATION,
     DEFAULT_IMAGE_SECURITY,
     DEFAULT_IMAP_TIMEOUT,
@@ -205,6 +207,9 @@ def _get_schema_step_2(data: list, user_input: list, default_dict: list) -> Any:
                 CONF_ALLOW_EXTERNAL, default=_get_default(CONF_ALLOW_EXTERNAL)
             ): bool,
             vol.Optional(CONF_CUSTOM_IMG, default=_get_default(CONF_CUSTOM_IMG)): bool,
+            vol.Optional(
+                CONF_FORWARDED_MODE, default=_get_default(CONF_FORWARDED_MODE)
+            ): bool,
         }
     )
 
@@ -305,6 +310,7 @@ class MailAndPackagesFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             CONF_GENERATE_MP4: False,
             CONF_ALLOW_EXTERNAL: DEFAULT_ALLOW_EXTERNAL,
             CONF_CUSTOM_IMG: DEFAULT_CUSTOM_IMG,
+            CONF_FORWARDED_MODE: DEFAULT_FORWARDED_MODE,
         }
 
         return self.async_show_form(
@@ -414,6 +420,7 @@ class MailAndPackagesOptionsFlow(config_entries.OptionsFlow):
             CONF_ALLOW_EXTERNAL: self._data.get(CONF_ALLOW_EXTERNAL),
             CONF_RESOURCES: self._data.get(CONF_RESOURCES),
             CONF_CUSTOM_IMG: self._data.get(CONF_CUSTOM_IMG) or DEFAULT_CUSTOM_IMG,
+            CONF_FORWARDED_MODE: self._data.get(CONF_FORWARDED_MODE) or DEFAULT_FORWARDED_MODE,
         }
 
         return self.async_show_form(

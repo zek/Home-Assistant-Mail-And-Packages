@@ -70,9 +70,11 @@ from .const import (
     CONF_CUSTOM_IMG_FILE,
     CONF_DURATION,
     CONF_FOLDER,
+    CONF_FORWARDED_MODE,
     CONF_GENERATE_MP4,
     CONF_PATH,
     DEFAULT_AMAZON_DAYS,
+    DEFAULT_FORWARDED_MODE,
     OVERLAY,
     SENSOR_DATA,
     SENSOR_TYPES,
@@ -335,6 +337,7 @@ def fetch(
     image_name = data[ATTR_IMAGE_NAME]
     amazon_image_name = data[ATTR_AMAZON_IMAGE]
     amazon_days = config.get(CONF_AMAZON_DAYS)
+    forwarded_mode = config.get(CONF_FORWARDED_MODE, DEFAULT_FORWARDED_MODE)
 
     if config.get(CONF_CUSTOM_IMG):
         nomail = config.get(CONF_CUSTOM_IMG_FILE)
@@ -354,6 +357,7 @@ def fetch(
             image_name,
             generate_mp4,
             nomail,
+            forwarded_mode,
         )
     elif sensor == AMAZON_PACKAGES:
         count[sensor] = get_items(
@@ -361,19 +365,21 @@ def fetch(
             param=ATTR_COUNT,
             fwds=amazon_fwds,
             days=amazon_days,
+            forwarded_mode=forwarded_mode,
         )
         count[AMAZON_ORDER] = get_items(
             account=account,
             param=ATTR_ORDER,
             fwds=amazon_fwds,
             days=amazon_days,
+            forwarded_mode=forwarded_mode,
         )
     elif sensor == AMAZON_HUB:
-        value = amazon_hub(account, amazon_fwds)
+        value = amazon_hub(account, amazon_fwds, forwarded_mode)
         count[sensor] = value[ATTR_COUNT]
         count[AMAZON_HUB_CODE] = value[ATTR_CODE]
     elif sensor == AMAZON_EXCEPTION:
-        info = amazon_exception(account, amazon_fwds)
+        info = amazon_exception(account, amazon_fwds, forwarded_mode)
         count[sensor] = info[ATTR_COUNT]
         count[AMAZON_EXCEPTION_ORDER] = info[ATTR_ORDER]
     elif "_packages" in sensor:
@@ -384,7 +390,7 @@ def fetch(
     elif "_delivering" in sensor:
         prefix = sensor.replace("_delivering", "")
         delivered = fetch(hass, config, account, data, f"{prefix}_delivered")
-        info = get_count(account, sensor, True)
+        info = get_count(account, sensor, True, forwarded_mode=forwarded_mode)
         count[sensor] = max(0, info[ATTR_COUNT] - delivered)
         count[f"{prefix}_tracking"] = info[ATTR_TRACKING]
     elif sensor == "zpackages_delivered":
@@ -404,7 +410,7 @@ def fetch(
         count[sensor] = update_time()
     else:
         count[sensor] = get_count(
-            account, sensor, False, img_out_path, hass, amazon_image_name
+            account, sensor, False, img_out_path, hass, amazon_image_name, forwarded_mode
         )[ATTR_COUNT]
 
     data.update(count)
@@ -477,10 +483,11 @@ def update_time() -> Any:
     return updated
 
 
-def build_search(address: list, date: str, subject: str = None) -> tuple:
+def build_search(address: list, date: str, subject: str = None, forwarded_mode: bool = False) -> tuple:
     """Build IMAP search query.
 
     Return tuple of utf8 flag and search query.
+    If forwarded_mode is True, skip FROM address check and only search by SUBJECT and DATE.
     """
     the_date = f"SINCE {date}"
     imap_search = None
@@ -498,28 +505,35 @@ def build_search(address: list, date: str, subject: str = None) -> tuple:
         email_list = address
 
     _LOGGER.debug("DEBUG subject: %s", subject)
+    _LOGGER.debug("DEBUG forwarded_mode: %s", forwarded_mode)
 
-    if subject is not None:
-        if not subject.isascii():
-            utf8_flag = True
-            # if prefix_list is not None:
-            #     imap_search = f"CHARSET UTF-8 {prefix_list}"
-            #     imap_search = f'{imap_search} FROM "{email_list} {the_date} SUBJECT'
-            # else:
-            #     imap_search = (
-            #         f"CHARSET UTF-8 FROM {email_list} {the_date} SUBJECT"
-            #     )
-            imap_search = f"{the_date} SUBJECT"
+    # Forwarded mode: skip FROM check, only use SUBJECT and DATE
+    if forwarded_mode:
+        if subject is not None:
+            if not subject.isascii():
+                utf8_flag = True
+                imap_search = f"{the_date} SUBJECT"
+            else:
+                imap_search = f'(SUBJECT "{subject}" {the_date})'
+        else:
+            # No subject provided, just search by date
+            imap_search = f"({the_date})"
+    else:
+        # Normal mode: use FROM, SUBJECT and DATE
+        if subject is not None:
+            if not subject.isascii():
+                utf8_flag = True
+                imap_search = f"{the_date} SUBJECT"
+            else:
+                if prefix_list is not None:
+                    imap_search = f'({prefix_list} FROM "{email_list}" SUBJECT "{subject}" {the_date})'
+                else:
+                    imap_search = f'(FROM "{email_list}" SUBJECT "{subject}" {the_date})'
         else:
             if prefix_list is not None:
-                imap_search = f'({prefix_list} FROM "{email_list}" SUBJECT "{subject}" {the_date})'
+                imap_search = f'({prefix_list} FROM "{email_list}" {the_date})'
             else:
-                imap_search = f'(FROM "{email_list}" SUBJECT "{subject}" {the_date})'
-    else:
-        if prefix_list is not None:
-            imap_search = f'({prefix_list} FROM "{email_list}" {the_date})'
-        else:
-            imap_search = f'(FROM "{email_list}" {the_date})'
+                imap_search = f'(FROM "{email_list}" {the_date})'
 
     _LOGGER.debug("DEBUG imap_search: %s", imap_search)
 
@@ -527,13 +541,14 @@ def build_search(address: list, date: str, subject: str = None) -> tuple:
 
 
 def email_search(
-    account: Type[imaplib.IMAP4_SSL], address: list, date: str, subject: str = None
+    account: Type[imaplib.IMAP4_SSL], address: list, date: str, subject: str = None, forwarded_mode: bool = False
 ) -> tuple:
     """Search emails with from, subject, senton date.
 
     Returns a tuple
+    If forwarded_mode is True, skip FROM address check.
     """
-    utf8_flag, search = build_search(address, date, subject)
+    utf8_flag, search = build_search(address, date, subject, forwarded_mode)
 
     if utf8_flag:
         subject = subject.encode("utf-8")
@@ -585,6 +600,7 @@ def get_mails(
     image_name: str,
     gen_mp4: bool = False,
     custom_img: str = None,
+    forwarded_mode: bool = False,
 ) -> int:
     """Create GIF image based on the attachments in the inbox."""
     image_count = 0
@@ -600,6 +616,7 @@ def get_mails(
         SENSOR_DATA[ATTR_USPS_MAIL][ATTR_EMAIL],
         get_formatted_date(),
         SENSOR_DATA[ATTR_USPS_MAIL][ATTR_SUBJECT][0],
+        forwarded_mode,
     )
 
     # Bail out on error
@@ -832,6 +849,7 @@ def get_count(
     image_path: Optional[str] = None,
     hass: Optional[HomeAssistant] = None,
     amazon_image_name: Optional[str] = None,
+    forwarded_mode: bool = False,
 ) -> dict:
     """Get Package Count.
 
@@ -846,7 +864,7 @@ def get_count(
 
     # Return Amazon delivered info
     if sensor_type == AMAZON_DELIVERED:
-        result[ATTR_COUNT] = amazon_search(account, image_path, hass, amazon_image_name)
+        result[ATTR_COUNT] = amazon_search(account, image_path, hass, amazon_image_name, forwarded_mode)
         result[ATTR_TRACKING] = ""
         return result
 
@@ -867,7 +885,7 @@ def get_count(
         )
 
         (server_response, data) = email_search(
-            account, SENSOR_DATA[sensor_type][ATTR_EMAIL], today, subject
+            account, SENSOR_DATA[sensor_type][ATTR_EMAIL], today, subject, forwarded_mode
         )
         if server_response == "OK" and data[0] is not None:
             if ATTR_BODY in SENSOR_DATA[sensor_type].keys():
@@ -1004,6 +1022,7 @@ def amazon_search(
     image_path: str,
     hass: HomeAssistant,
     amazon_image_name: str,
+    forwarded_mode: bool = False,
 ) -> int:
     """Find Amazon Delivered email.
 
@@ -1021,7 +1040,7 @@ def amazon_search(
             _LOGGER.debug("Amazon email search address: %s", str(email_address))
 
             (server_response, data) = email_search(
-                account, email_address, today, subject
+                account, email_address, today, subject, forwarded_mode
             )
 
             if server_response == "OK" and data[0] is not None:
@@ -1108,7 +1127,7 @@ def _process_amazon_forwards(email_list: Union[List[str], None]) -> list:
     return result
 
 
-def amazon_hub(account: Type[imaplib.IMAP4_SSL], fwds: Optional[str] = None) -> dict:
+def amazon_hub(account: Type[imaplib.IMAP4_SSL], fwds: Optional[str] = None, forwarded_mode: bool = False) -> dict:
     """Find Amazon Hub info emails.
 
     Returns dict of sensor data
@@ -1124,7 +1143,7 @@ def amazon_hub(account: Type[imaplib.IMAP4_SSL], fwds: Optional[str] = None) -> 
 
     for address in email_addresses:
         (server_response, sdata) = email_search(
-            account, address, today, subject=AMAZON_HUB_SUBJECT
+            account, address, today, subject=AMAZON_HUB_SUBJECT, forwarded_mode=forwarded_mode
         )
 
         # Bail out on error
@@ -1176,7 +1195,7 @@ def amazon_hub(account: Type[imaplib.IMAP4_SSL], fwds: Optional[str] = None) -> 
 
 
 def amazon_exception(
-    account: Type[imaplib.IMAP4_SSL], fwds: Optional[str] = None
+    account: Type[imaplib.IMAP4_SSL], fwds: Optional[str] = None, forwarded_mode: bool = False
 ) -> dict:
     """Find Amazon exception emails.
 
@@ -1205,7 +1224,7 @@ def amazon_exception(
             _LOGGER.debug("Amazon email search address: %s", str(email_address))
 
         (server_response, sdata) = email_search(
-            account, email_address, tfmt, AMAZON_EXCEPTION_SUBJECT
+            account, email_address, tfmt, AMAZON_EXCEPTION_SUBJECT, forwarded_mode
         )
 
         if server_response == "OK":
@@ -1226,6 +1245,7 @@ def get_items(
     param: str = None,
     fwds: Optional[str] = None,
     days: int = DEFAULT_AMAZON_DAYS,
+    forwarded_mode: bool = False,
 ) -> Union[List[str], int]:
     """Parse Amazon emails for delivery date and order number.
 
@@ -1256,7 +1276,7 @@ def get_items(
                 email_address.append(f"{address}@{domain}")
             _LOGGER.debug("Amazon email search address: %s", str(email_address))
 
-        (server_response, sdata) = email_search(account, email_address, tfmt)
+        (server_response, sdata) = email_search(account, email_address, tfmt, forwarded_mode=forwarded_mode)
 
         if server_response == "OK":
             mail_ids = sdata[0]
