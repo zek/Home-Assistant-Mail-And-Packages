@@ -179,7 +179,7 @@ def process_emails(hass: HomeAssistant, config: ConfigEntry) -> dict:
     _LOGGER.debug("Amazon Image Name: %s", image_name)
     _image[ATTR_AMAZON_IMAGE] = image_name
 
-    image_path = config.get(CONF_PATH)
+    image_path = config.get(CONF_PATH) or DEFAULT_PATH
     _LOGGER.debug("Image path: %s", image_path)
     _image[ATTR_IMAGE_PATH] = image_path
     data.update(_image)
@@ -198,7 +198,7 @@ def process_emails(hass: HomeAssistant, config: ConfigEntry) -> dict:
 def copy_images(hass: HomeAssistant, config: ConfigEntry) -> None:
     """Copy images to www directory if enabled."""
     paths = []
-    src = f"{hass.config.path()}/{config.get(CONF_PATH)}"
+    src = f"{hass.config.path()}/{config.get(CONF_PATH) or DEFAULT_PATH}"
     dst = f"{hass.config.path()}/www/mail_and_packages/"
 
     # Setup paths list
@@ -240,9 +240,9 @@ def image_file_name(
     if amazon:
         mail_none = f"{os.path.dirname(__file__)}/no_deliveries.jpg"
         image_name = "no_deliveries.jpg"
-        path = f"{hass.config.path()}/{config.get(CONF_PATH)}amazon"
+        path = f"{hass.config.path()}/{config.get(CONF_PATH) or DEFAULT_PATH}amazon"
     else:
-        path = f"{hass.config.path()}/{config.get(CONF_PATH)}"
+        path = f"{hass.config.path()}/{config.get(CONF_PATH) or DEFAULT_PATH}"
         if config.get(CONF_CUSTOM_IMG):
             mail_none = config.get(CONF_CUSTOM_IMG_FILE)
         else:
@@ -330,7 +330,7 @@ def fetch(
 
     Returns integer of sensor passed to it
     """
-    img_out_path = f"{hass.config.path()}/{config.get(CONF_PATH)}"
+    img_out_path = f"{hass.config.path()}/{config.get(CONF_PATH) or DEFAULT_PATH}"
     gif_duration = config.get(CONF_DURATION)
     generate_mp4 = config.get(CONF_GENERATE_MP4)
     amazon_fwds = config.get(CONF_AMAZON_FWDS)
