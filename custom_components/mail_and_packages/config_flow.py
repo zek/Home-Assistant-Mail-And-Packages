@@ -172,7 +172,11 @@ def _get_schema_step_2(data: list, user_input: list, default_dict: list) -> Any:
 
     def _get_default(key: str, fallback_default: Any = None) -> None:
         """Get default value for key."""
-        return user_input.get(key, default_dict.get(key, fallback_default))
+        value = user_input.get(key, default_dict.get(key, fallback_default))
+        # Convert list to comma-separated string for amazon_fwds
+        if key == CONF_AMAZON_FWDS and isinstance(value, list):
+            return ", ".join(value)
+        return value
 
     return vol.Schema(
         {
