@@ -80,7 +80,7 @@ class PackagesBinarySensor(CoordinatorEntity, BinarySensorEntity):
     def device_info(self) -> dict:
         """Return device information about the mailbox."""
         return {
-            "connections": {(DOMAIN, self._unique_id)},
+            "identifiers": {(DOMAIN, self._unique_id)},
             "name": self._host,
             "manufacturer": "IMAP E-Mail",
             "sw_version": VERSION,

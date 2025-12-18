@@ -82,7 +82,7 @@ class PackagesSensor(CoordinatorEntity, SensorEntity):
     def device_info(self) -> dict:
         """Return device information about the mailbox."""
         return {
-            "connections": {(DOMAIN, self._unique_id)},
+            "identifiers": {(DOMAIN, self._unique_id)},
             "name": self._host,
             "manufacturer": "IMAP E-Mail",
             "sw_version": VERSION,
@@ -178,7 +178,7 @@ class ImagePathSensors(CoordinatorEntity, SensorEntity):
     def device_info(self) -> dict:
         """Return device information about the mailbox."""
         return {
-            "connections": {(DOMAIN, self._unique_id)},
+            "identifiers": {(DOMAIN, self._unique_id)},
             "name": self._host,
             "manufacturer": "IMAP E-Mail",
             "sw_version": VERSION,

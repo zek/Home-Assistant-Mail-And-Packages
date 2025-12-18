@@ -558,12 +558,10 @@ def _get_schema_step_storage(user_input: list, default_dict: list) -> Any:
     )
 
 
-@config_entries.HANDLERS.register(DOMAIN)
 class MailAndPackagesFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     """Config flow for Mail and Packages."""
 
     VERSION = CONFIG_VER
-    CONNECTION_CLASS = config_entries.CONN_CLASS_CLOUD_POLL
 
     def __init__(self):
         """Initialize."""

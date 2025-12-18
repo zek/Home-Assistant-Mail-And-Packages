@@ -460,7 +460,7 @@ class MailCam(CoordinatorEntity, Camera):
                                 )
 
         self.check_file_path_access(self._file_path)
-        self.schedule_update_ha_state()
+        self.async_write_ha_state()
 
     def _is_custom_no_mail_image(self, base_name: str, file_path: str) -> bool:
         """Check if the given file path is a custom 'no mail' image for the specified camera.
@@ -517,13 +517,13 @@ class MailCam(CoordinatorEntity, Camera):
 
     async def async_on_demand_update(self):
         """Update state."""
-        self.async_schedule_update_ha_state(True)
+        self.async_write_ha_state()
 
     @property
     def device_info(self) -> dict:
         """Return device information about the mailbox."""
         return {
-            "connections": {(DOMAIN, self._unique_id)},
+            "identifiers": {(DOMAIN, self._unique_id)},
             "name": self._host,
             "manufacturer": "IMAP E-Mail",
             "sw_version": VERSION,
