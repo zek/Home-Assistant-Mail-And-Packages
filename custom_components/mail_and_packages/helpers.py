@@ -2235,23 +2235,18 @@ async def download_img(
 def _process_amazon_forwards(email_list: str | list | None) -> list:
     """Process amazon forward emails.
 
-    Returns list of email addresses that are actually Amazon domains.
-    This filters out non-Amazon forwarded addresses to prevent false matches.
+    Returns list of email addresses that forward Amazon emails to the monitored mailbox.
+    These are the FROM addresses to search for (e.g., personal email that forwards Amazon emails).
     """
     result = []
     if email_list is not None:
         if not isinstance(email_list, list):
-            email_list = email_list.split()
+            email_list = email_list.split(",")
         for fwd in email_list:
+            fwd = fwd.strip()
             if fwd and fwd != '""' and fwd not in result:
-                # Only include forwarded addresses if they are actual Amazon domains
-                if any(
-                    amazon_domain in fwd.lower() for amazon_domain in AMAZON_DOMAINS
-                ):
-                    result.append(fwd)
-                    _LOGGER.debug("Including Amazon forwarded address: %s", fwd)
-                else:
-                    _LOGGER.debug("Filtering out non-Amazon forwarded address: %s", fwd)
+                result.append(fwd)
+                _LOGGER.debug("Including forwarded address: %s", fwd)
 
     _LOGGER.debug("Processed forwards: %s", result)
     return result
